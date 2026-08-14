@@ -80,13 +80,14 @@ namespace ExcelHell.Prototype
             };
         }
 
-        public static ContentToken Aggregate(string id, double value, IEnumerable<string> sourceTokenIds)
+        public static ContentToken Aggregate(string id, double value, IEnumerable<string> sourceTokenIds, bool required = false)
         {
             return new ContentToken
             {
                 Id = id,
                 Kind = ContentKind.Aggregate,
                 Number = value,
+                IsRequiredSource = required,
                 SourceTokenIds = sourceTokenIds?.Distinct().OrderBy(x => x).ToList() ?? new List<string>()
             };
         }
