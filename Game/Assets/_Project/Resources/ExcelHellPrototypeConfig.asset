@@ -17,14 +17,10 @@ MonoBehaviour:
   maxTurns: 15
   reportGoals: 25
   anomalyActivationTurn: 3
-  maxOutbreaks: 3
   respawnDelayTurns: 2
+  outbreakDelayWhileActiveTurns: 3
   corruptionTurnsBeforeDestroy: 2
-  anomalySpawnPoints:
-  - row: 8
-    column: 1
-  - row: 8
-    column: 8
-  - row: 4
-    column: 4
+  spawnPreferredDistance: 2
+  spawnDistanceVariation: 1
+  spawnCandidatePoolSize: 4
   showExpectedAnswers: 1
