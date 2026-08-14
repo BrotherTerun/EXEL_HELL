@@ -15,8 +15,16 @@ MonoBehaviour:
   rows: 8
   columns: 8
   maxTurns: 15
+  reportGoals: 25
   anomalyActivationTurn: 3
-  anomalySpawnRow: 0
-  anomalySpawnColumn: 0
+  maxOutbreaks: 3
+  respawnDelayTurns: 2
   corruptionTurnsBeforeDestroy: 2
+  anomalySpawnPoints:
+  - row: 8
+    column: 1
+  - row: 8
+    column: 8
+  - row: 4
+    column: 4
   showExpectedAnswers: 1
