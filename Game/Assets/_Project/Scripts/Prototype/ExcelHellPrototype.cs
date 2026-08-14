@@ -54,7 +54,6 @@ namespace ExcelHell.Prototype
         {
             if (FindFirstObjectByType<ExcelHellPrototype>() != null)
                 return;
-
             new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
         }
 
@@ -77,15 +76,15 @@ namespace ExcelHell.Prototype
             BuildModel();
             InitializeAnomaly();
             BuildUi();
+            Canvas.ForceUpdateCanvases();
             RefreshAll();
+            Canvas.ForceUpdateCanvases();
             SetStatus(goals.Count == 0 ? "ui.noGoals" : "ui.select");
         }
 
         private void EnsureEventSystem()
         {
-            if (FindFirstObjectByType<EventSystem>() != null)
-                return;
-
+            if (FindFirstObjectByType<EventSystem>() != null) return;
             var go = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
             go.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
         }
@@ -98,14 +97,7 @@ namespace ExcelHell.Prototype
 
             for (var row = 0; row < rows; row++)
             for (var column = 0; column < columns; column++)
-            {
-                cells[row, column] = new CellModel
-                {
-                    Row = row,
-                    Column = column,
-                    State = CellState.Normal
-                };
-            }
+                cells[row, column] = new CellModel { Row = row, Column = column, State = CellState.Normal };
 
             Place(0, 1, ContentToken.FieldKey("hours"));
             Place(0, 2, ContentToken.FieldKey("salary"));
@@ -121,12 +113,13 @@ namespace ExcelHell.Prototype
             Place(0, reportColumn, ContentToken.Label("report.label", "label.report"));
             BuildReportGoals();
 
+            // MVP 0.4: fresh values to remove memorized answers from repeated MVP 0.3 playtests.
             var values = new Dictionary<string, double[]>
             {
-                ["hours"] = new[] { 40d, 40d, 32d, 44d, 36d },
-                ["salary"] = new[] { 50d, 52d, 41d, 49d, 55d },
-                ["overtime"] = new[] { 3d, 0d, 5d, 2d, 4d },
-                ["bonus"] = new[] { 5d, 3d, 2d, 4d, 6d }
+                ["hours"] = new[] { 38d, 42d, 35d, 47d, 39d },
+                ["salary"] = new[] { 63d, 54d, 71d, 58d, 66d },
+                ["overtime"] = new[] { 1d, 4d, 6d, 3d, 2d },
+                ["bonus"] = new[] { 7d, 2d, 5d, 9d, 4d }
             };
 
             var tokens = new List<ContentToken>();
@@ -144,47 +137,34 @@ namespace ExcelHell.Prototype
             for (var column = columns - 1; column >= 0; column--)
             {
                 var cell = cells[row, column];
-                if (cell.Occupant == null && !reservedCells.Contains((row, column)))
-                    free.Add(cell);
+                if (cell.Occupant == null && !reservedCells.Contains((row, column))) free.Add(cell);
             }
 
             if (free.Count < tokens.Count)
                 throw new InvalidOperationException($"Board {rows}x{columns} has no room for the prototype dataset and selected report goals.");
 
-            for (var i = 0; i < tokens.Count; i++)
-                free[i].Occupant = tokens[scramble[i]];
+            for (var i = 0; i < tokens.Count; i++) free[i].Occupant = tokens[scramble[i]];
         }
 
         private void BuildReportGoals()
         {
             var targetRow = 1;
 
-            void AddGoal(
-                PrototypeReportGoals flag,
-                string stringId,
-                double expected,
-                IEnumerable<string> semanticSources,
-                string directToken = null,
-                IEnumerable<string> threatSources = null)
+            void AddGoal(PrototypeReportGoals flag, string stringId, double expected,
+                IEnumerable<string> semanticSources, string directToken = null, IEnumerable<string> threatSources = null)
             {
-                if (!config.HasGoal(flag))
-                    return;
-
-                if (targetRow >= rows)
-                    throw new InvalidOperationException("Too many report goals for the current board height.");
+                if (!config.HasGoal(flag)) return;
+                if (targetRow >= rows) throw new InvalidOperationException("Too many report goals for the current board height.");
 
                 var sources = semanticSources?.ToArray() ?? Array.Empty<string>();
                 goals.Add(new ReportGoal(stringId, expected, targetRow, reportColumn, sources, directToken));
                 reservedCells.Add((targetRow, reportColumn));
                 targetRow++;
 
-                foreach (var id in sources)
-                    requiredForPlay.Add(id);
-                if (!string.IsNullOrEmpty(directToken))
-                    requiredForPlay.Add(directToken);
+                foreach (var id in sources) requiredForPlay.Add(id);
+                if (!string.IsNullOrEmpty(directToken)) requiredForPlay.Add(directToken);
                 if (threatSources != null)
-                    foreach (var id in threatSources)
-                        requiredForPlay.Add(id);
+                    foreach (var id in threatSources) requiredForPlay.Add(id);
             }
 
             var salaryAll = IdsForField("salary");
@@ -192,43 +172,35 @@ namespace ExcelHell.Prototype
             var bonusAll = IdsForField("bonus");
             var hoursAll = IdsForField("hours");
 
-            AddGoal(PrototypeReportGoals.SalaryTotal, "goal.salary", 247d, salaryAll);
-            AddGoal(PrototypeReportGoals.OvertimeTotal, "goal.overtime", 14d, overtimeAll);
-            AddGoal(PrototypeReportGoals.BonusTotal, "goal.bonus", 20d, bonusAll);
+            AddGoal(PrototypeReportGoals.SalaryTotal, "goal.salary", 312d, salaryAll);
+            AddGoal(PrototypeReportGoals.OvertimeTotal, "goal.overtime", 16d, overtimeAll);
+            AddGoal(PrototypeReportGoals.BonusTotal, "goal.bonus", 27d, bonusAll);
 
-            var bonusAtLeastFour = new[]
+            var bonusAtLeastFive = new[]
             {
-                DataId("ivanov", "bonus"),
-                DataId("volkova", "bonus"),
-                DataId("kim", "bonus")
+                DataId("ivanov", "bonus"), DataId("sidorov", "bonus"), DataId("volkova", "bonus")
             };
-            AddGoal(PrototypeReportGoals.BonusAtLeastFour, "goal.bonus4", 15d,
-                bonusAtLeastFour, threatSources: bonusAll);
+            AddGoal(PrototypeReportGoals.BonusAtLeastFour, "goal.bonus5", 21d,
+                bonusAtLeastFive, threatSources: bonusAll);
 
-            AddGoal(PrototypeReportGoals.SalaryOfMaxOvertime, "goal.maxOvertimeSalary", 41d,
+            AddGoal(PrototypeReportGoals.SalaryOfMaxOvertime, "goal.maxOvertimeSalary", 71d,
                 new[] { DataId("sidorov", "salary") }, DataId("sidorov", "salary"),
                 overtimeAll.Concat(new[] { DataId("sidorov", "salary") }));
 
             var lowHoursSalaries = new[]
             {
-                DataId("sidorov", "salary"),
-                DataId("kim", "salary")
+                DataId("ivanov", "salary"), DataId("sidorov", "salary"), DataId("kim", "salary")
             };
-            AddGoal(PrototypeReportGoals.SalaryForHoursBelowForty, "goal.lowHoursSalary", 96d,
+            AddGoal(PrototypeReportGoals.SalaryForHoursBelowForty, "goal.lowHoursSalary", 200d,
                 lowHoursSalaries, threatSources: hoursAll.Concat(lowHoursSalaries));
         }
 
-        private string[] IdsForField(string fieldId)
-        {
-            return schema.Records.Select(record => DataId(record, fieldId)).ToArray();
-        }
-
+        private string[] IdsForField(string fieldId) => schema.Records.Select(record => DataId(record, fieldId)).ToArray();
         private static string DataId(string recordId, string fieldId) => $"data.{recordId}.{fieldId}";
 
         private void Place(int row, int column, ContentToken token)
         {
-            if (row >= 0 && row < rows && column >= 0 && column < columns)
-                cells[row, column].Occupant = token;
+            if (row >= 0 && row < rows && column >= 0 && column < columns) cells[row, column].Occupant = token;
         }
 
         private void InitializeAnomaly()
@@ -236,18 +208,13 @@ namespace ExcelHell.Prototype
             currentIntent = null;
             pendingSpawnIntent = null;
             spawnSequence = 0;
-
             ScheduleNextOutbreak(config.SafeActivationTurn == 0 ? 1 : config.SafeActivationTurn);
         }
 
         private bool ScheduleNextOutbreak(int delay)
         {
-            if (pendingSpawnIntent.HasValue)
-                return false;
-
-            if (!TryChooseDynamicSpawnCell(out var spawn))
-                return false;
-
+            if (pendingSpawnIntent.HasValue) return false;
+            if (!TryChooseDynamicSpawnCell(out var spawn)) return false;
             pendingSpawnIntent = new SpawnIntent(spawn.Row, spawn.Column, Mathf.Max(1, delay));
             return true;
         }
@@ -256,30 +223,25 @@ namespace ExcelHell.Prototype
         {
             result = null;
 
+            // MVP 0.4: only live report-critical data are primary anchors. Empty report targets no longer bias spawn.
             var anchors = cells.Cast<CellModel>()
-                .Where(cell =>
-                    cell.State != CellState.Destroyed &&
-                    (cell.Occupant?.IsRequiredSource == true || goals.Any(g => g.TargetRow == cell.Row && g.TargetColumn == cell.Column)))
+                .Where(cell => cell.State != CellState.Destroyed && cell.Occupant?.IsRequiredSource == true)
                 .ToList();
 
             if (anchors.Count == 0)
-            {
                 anchors = cells.Cast<CellModel>()
                     .Where(cell => cell.State != CellState.Destroyed && cell.Occupant != null)
                     .ToList();
-            }
-
-            if (anchors.Count == 0)
-                return false;
+            if (anchors.Count == 0) return false;
 
             var preferred = config.SafeSpawnPreferredDistance;
             var variation = config.SafeSpawnDistanceVariation;
             var minDistance = Mathf.Max(1, preferred - variation);
             var maxDistance = preferred + variation;
 
-            var candidates = cells.Cast<CellModel>()
+            var scored = cells.Cast<CellModel>()
                 .Where(cell => cell.State == CellState.Normal)
-                .Where(cell => !goals.Any(g => g.TargetRow == cell.Row && g.TargetColumn == cell.Column))
+                .Where(cell => !IsReportTarget(cell.Row, cell.Column))
                 .Where(cell => cell.Occupant?.IsRequiredSource != true)
                 .Select(cell => new
                 {
@@ -290,30 +252,49 @@ namespace ExcelHell.Prototype
                 .OrderBy(x => x.Distance < minDistance ? minDistance - x.Distance : x.Distance > maxDistance ? x.Distance - maxDistance : 0)
                 .ThenBy(x => Mathf.Abs(x.Distance - preferred))
                 .ThenBy(x => x.Cell.Occupant == null ? 0 : 1)
-                .ThenBy(x => x.Cell.Row)
-                .ThenBy(x => x.Cell.Column)
-                .Select(x => x.Cell)
+                .ThenBy(x => SpawnTieBreak(x.Cell))
                 .ToList();
 
-            if (candidates.Count == 0)
-                return false;
+            if (scored.Count == 0) return false;
+            var poolSize = Mathf.Min(config.SafeSpawnCandidatePoolSize, scored.Count);
+            var pool = scored.Take(poolSize).ToList();
+            var chosen = pool[spawnSequence % poolSize];
+            result = chosen.Cell;
 
-            var poolSize = Mathf.Min(config.SafeSpawnCandidatePoolSize, candidates.Count);
-            result = candidates[spawnSequence % poolSize];
+            if (config.showSpawnDebug)
+            {
+                var anchorText = string.Join(", ", anchors.Select(a => $"{a.Address}:{a.Occupant?.Id}"));
+                var poolText = string.Join(", ", pool.Select(p => $"{p.Cell.Address}:d{p.Distance}"));
+                Debug.Log($"EXEL HELL #REF! SPAWN goals={(int)config.reportGoals} seq={spawnSequence} chosen={result.Address} d={chosen.Distance} anchors=[{anchorText}] pool=[{poolText}]");
+            }
+
             spawnSequence++;
             return true;
         }
 
+        private int SpawnTieBreak(CellModel cell)
+        {
+            unchecked
+            {
+                var hash = 17;
+                hash = hash * 31 + (int)config.reportGoals;
+                hash = hash * 31 + spawnSequence;
+                hash = hash * 31 + cell.Row;
+                hash = hash * 31 + cell.Column;
+                hash ^= hash << 13;
+                hash ^= hash >> 17;
+                hash ^= hash << 5;
+                return hash & int.MaxValue;
+            }
+        }
+
         private bool TrySpawnPendingOutbreak()
         {
-            if (!pendingSpawnIntent.HasValue)
-                return false;
-
+            if (!pendingSpawnIntent.HasValue) return false;
             var intent = pendingSpawnIntent.Value;
             var spawn = cells[intent.Row, intent.Column];
 
-            if (spawn.State != CellState.Normal || spawn.Occupant?.IsRequiredSource == true ||
-                goals.Any(g => g.TargetRow == spawn.Row && g.TargetColumn == spawn.Column))
+            if (spawn.State != CellState.Normal || spawn.Occupant?.IsRequiredSource == true || IsReportTarget(spawn.Row, spawn.Column))
             {
                 pendingSpawnIntent = null;
                 ScheduleNextOutbreak(1);
@@ -342,7 +323,6 @@ namespace ExcelHell.Prototype
 
             titleText = CreateText(background.transform, string.Empty, 28, FontStyle.Bold, TextAnchor.MiddleLeft);
             SetRect(titleText.rectTransform, 24, -16, 700, 48, new Vector2(0, 1));
-
             turnText = CreateText(background.transform, string.Empty, 20, FontStyle.Bold, TextAnchor.MiddleRight);
             SetRect(turnText.rectTransform, 1180, -18, 380, 44, new Vector2(0, 1));
 
@@ -359,8 +339,7 @@ namespace ExcelHell.Prototype
 
             var gridRoot = new GameObject("Spreadsheet", typeof(RectTransform), typeof(GridLayoutGroup));
             gridRoot.transform.SetParent(parent, false);
-            SetRect(gridRoot.GetComponent<RectTransform>(), 24, -82,
-                cellWidth * (columns + 1), cellHeight * (rows + 1), new Vector2(0, 1));
+            SetRect(gridRoot.GetComponent<RectTransform>(), 24, -82, cellWidth * (columns + 1), cellHeight * (rows + 1), new Vector2(0, 1));
 
             var layout = gridRoot.GetComponent<GridLayoutGroup>();
             layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
@@ -369,14 +348,11 @@ namespace ExcelHell.Prototype
             layout.spacing = Vector2.zero;
 
             CreateHeaderCell(gridRoot.transform, string.Empty);
-            for (var column = 0; column < columns; column++)
-                CreateHeaderCell(gridRoot.transform, ColumnName(column));
-
+            for (var column = 0; column < columns; column++) CreateHeaderCell(gridRoot.transform, ColumnName(column));
             for (var row = 0; row < rows; row++)
             {
                 CreateHeaderCell(gridRoot.transform, (row + 1).ToString());
-                for (var column = 0; column < columns; column++)
-                    views[row, column] = CreateDataCell(gridRoot.transform, row, column);
+                for (var column = 0; column < columns; column++) views[row, column] = CreateDataCell(gridRoot.transform, row, column);
             }
         }
 
@@ -387,18 +363,14 @@ namespace ExcelHell.Prototype
 
             headingText = CreateText(side.transform, string.Empty, 24, FontStyle.Bold, TextAnchor.UpperLeft);
             SetRect(headingText.rectTransform, 20, -18, 500, 38, new Vector2(0, 1));
-
             CreateLocalizedButton(side.transform, "ui.language", 530, -12, ToggleLanguage, 100, out _);
 
             goalsText = CreateText(side.transform, string.Empty, 17, FontStyle.Normal, TextAnchor.UpperLeft);
             SetRect(goalsText.rectTransform, 20, -62, 620, 180, new Vector2(0, 1));
-
             intentText = CreateText(side.transform, string.Empty, 19, FontStyle.Bold, TextAnchor.UpperLeft);
             SetRect(intentText.rectTransform, 20, -245, 620, 58, new Vector2(0, 1));
-
             clipboardTextUi = CreateText(side.transform, string.Empty, 18, FontStyle.Normal, TextAnchor.UpperLeft);
             SetRect(clipboardTextUi.rectTransform, 20, -305, 620, 44, new Vector2(0, 1));
-
             statusText = CreateText(side.transform, string.Empty, 16, FontStyle.Italic, TextAnchor.UpperLeft);
             SetRect(statusText.rectTransform, 20, -350, 620, 68, new Vector2(0, 1));
 
@@ -429,7 +401,7 @@ namespace ExcelHell.Prototype
             label.raycastTarget = false;
 
             var view = go.GetComponent<ExcelHellCellView>();
-            view.Initialize(this, row, column, image, label);
+            view.Initialize(this, row, column, image, label, outline);
             return view;
         }
 
@@ -471,7 +443,6 @@ namespace ExcelHell.Prototype
                 CommitSum(row, column);
                 return;
             }
-
             selecting = true;
             selectionStartRow = row;
             selectionStartColumn = column;
@@ -492,11 +463,8 @@ namespace ExcelHell.Prototype
             var maxRow = Mathf.Max(selectionStartRow, endRow);
             var minColumn = Mathf.Min(selectionStartColumn, endColumn);
             var maxColumn = Mathf.Max(selectionStartColumn, endColumn);
-
             for (var row = minRow; row <= maxRow; row++)
-            for (var column = minColumn; column <= maxColumn; column++)
-                selection.Add(cells[row, column]);
-
+            for (var column = minColumn; column <= maxColumn; column++) selection.Add(cells[row, column]);
             RefreshAll();
         }
 
@@ -516,7 +484,6 @@ namespace ExcelHell.Prototype
                 SetStatus("ui.spill");
                 return;
             }
-
             ExecuteSort(plan);
             var keyName = DisplayToken(plan.KeyCell.Occupant, true);
             var fallback = plan.UsesFallbackDirection ? loc.Get("ui.sortFallback") : string.Empty;
@@ -534,17 +501,13 @@ namespace ExcelHell.Prototype
 
             if (key.Kind == ContentKind.RecordKey)
             {
-                tokens = AllDataTokens().Where(t => t.RecordId == key.RecordId)
-                    .OrderBy(t => schema.FieldOrder(t.FieldId)).ToList();
-                primary = (0, 1);
-                fallback = (0, -1);
+                tokens = AllDataTokens().Where(t => t.RecordId == key.RecordId).OrderBy(t => schema.FieldOrder(t.FieldId)).ToList();
+                primary = (0, 1); fallback = (0, -1);
             }
             else
             {
-                tokens = AllDataTokens().Where(t => t.FieldId == key.FieldId)
-                    .OrderBy(t => schema.RecordOrder(t.RecordId)).ToList();
-                primary = (1, 0);
-                fallback = (-1, 0);
+                tokens = AllDataTokens().Where(t => t.FieldId == key.FieldId).OrderBy(t => schema.RecordOrder(t.RecordId)).ToList();
+                primary = (1, 0); fallback = (-1, 0);
             }
 
             if (tokens.Count == 0) return false;
@@ -582,26 +545,22 @@ namespace ExcelHell.Prototype
         {
             var movingIds = plan.Tokens.Select(t => t.Id).ToHashSet();
             foreach (var cell in cells)
-                if (cell.Occupant != null && movingIds.Contains(cell.Occupant.Id))
-                    cell.Occupant = null;
-
-            for (var i = 0; i < plan.Tokens.Count; i++)
-                plan.Destinations[i].Occupant = plan.Tokens[i];
+                if (cell.Occupant != null && movingIds.Contains(cell.Occupant.Id)) cell.Occupant = null;
+            for (var i = 0; i < plan.Tokens.Count; i++) plan.Destinations[i].Occupant = plan.Tokens[i];
         }
 
         private IEnumerable<ContentToken> AllDataTokens()
         {
             foreach (var cell in cells)
-                if (cell.State == CellState.Normal && cell.Occupant?.Kind == ContentKind.Data)
-                    yield return cell.Occupant;
+                if (cell.State == CellState.Normal && cell.Occupant?.Kind == ContentKind.Data) yield return cell.Occupant;
         }
 
         private void OnSum()
         {
             if (!CanAct()) return;
-            if (selection.Count == 0)
+            if (selection.Count < 2)
             {
-                SetStatus("ui.sumNeedRange");
+                SetStatus("ui.sumNeedTwo");
                 return;
             }
             if (selection.Any(cell => cell.State != CellState.Normal || cell.Occupant == null || !cell.Occupant.IsNumeric ||
@@ -627,19 +586,19 @@ namespace ExcelHell.Prototype
             }
 
             var count = pendingSumSources.Count;
-            var provenance = pendingSumSources
-                .SelectMany(source => source.Occupant.SourceTokenIds ?? new List<string>())
-                .Distinct()
-                .ToArray();
+            var provenance = pendingSumSources.SelectMany(source => source.Occupant.SourceTokenIds ?? new List<string>()).Distinct().ToArray();
+            var required = pendingSumSources.Any(source => source.Occupant.IsRequiredSource);
+            var reportTarget = IsReportTarget(row, column);
 
-            foreach (var source in pendingSumSources)
-                source.Occupant = null;
+            // MVP 0.4 compromise: SUM is destructive in worksheet space, but writing a report answer is a non-consuming calculation.
+            if (!reportTarget)
+                foreach (var source in pendingSumSources) source.Occupant = null;
 
-            target.Occupant = ContentToken.Aggregate($"aggregate.{++aggregateCounter}", pendingSum, provenance);
+            target.Occupant = ContentToken.Aggregate($"aggregate.{++aggregateCounter}", pendingSum, provenance, required);
             awaitingSumTarget = false;
             pendingSumSources = null;
             selection.Clear();
-            CompletePlayerAction(loc.Format("ui.sumDone", count, target.Address));
+            CompletePlayerAction(loc.Format(reportTarget ? "ui.sumReported" : "ui.sumDone", count, target.Address));
         }
 
         private void OnCut()
@@ -647,10 +606,8 @@ namespace ExcelHell.Prototype
             if (!CanAct()) return;
             if (selection.Count != 1 || selection[0].State != CellState.Normal || selection[0].Occupant == null)
             {
-                SetStatus("ui.cutNeed");
-                return;
+                SetStatus("ui.cutNeed"); return;
             }
-
             var cell = selection[0];
             clipboard = cell.Occupant;
             cell.Occupant = null;
@@ -661,17 +618,11 @@ namespace ExcelHell.Prototype
         private void OnPaste()
         {
             if (!CanAct()) return;
-            if (clipboard == null)
-            {
-                SetStatus("ui.pasteEmpty");
-                return;
-            }
+            if (clipboard == null) { SetStatus("ui.pasteEmpty"); return; }
             if (selection.Count != 1 || selection[0].State != CellState.Normal || selection[0].Occupant != null)
             {
-                SetStatus("ui.pasteTarget");
-                return;
+                SetStatus("ui.pasteTarget"); return;
             }
-
             var cell = selection[0];
             cell.Occupant = clipboard;
             clipboard = null;
@@ -682,12 +633,7 @@ namespace ExcelHell.Prototype
         private void OnDelete()
         {
             if (!CanAct()) return;
-            if (selection.Count != 1)
-            {
-                SetStatus("ui.deleteNeed");
-                return;
-            }
-
+            if (selection.Count != 1) { SetStatus("ui.deleteNeed"); return; }
             var cell = selection[0];
             var quarantinedRef = cell.State == CellState.Corrupted;
             cell.Occupant = null;
@@ -699,16 +645,8 @@ namespace ExcelHell.Prototype
 
         private bool CanAct()
         {
-            if (finished)
-            {
-                SetStatus("ui.finished");
-                return false;
-            }
-            if (awaitingSumTarget)
-            {
-                SetStatus("ui.finishSum");
-                return false;
-            }
+            if (finished) { SetStatus("ui.finished"); return false; }
+            if (awaitingSumTarget) { SetStatus("ui.finishSum"); return false; }
             return true;
         }
 
@@ -716,16 +654,12 @@ namespace ExcelHell.Prototype
         {
             turn++;
             ResolveAnomaly();
-
             if (!finished && turn >= config.SafeMaxTurns)
             {
                 finished = true;
                 statusText.text = loc.Get("ui.deadline");
             }
-            else if (!finished)
-            {
-                statusText.text = localizedMessage;
-            }
+            else if (!finished) statusText.text = localizedMessage;
             RefreshAll();
         }
 
@@ -737,14 +671,8 @@ namespace ExcelHell.Prototype
             if (pendingSpawnIntent.HasValue)
             {
                 var pending = pendingSpawnIntent.Value;
-                if (pending.TurnsRemaining <= 1)
-                {
-                    spawnedThisResolve = TrySpawnPendingOutbreak();
-                }
-                else
-                {
-                    pendingSpawnIntent = new SpawnIntent(pending.Row, pending.Column, pending.TurnsRemaining - 1);
-                }
+                if (pending.TurnsRemaining <= 1) spawnedThisResolve = TrySpawnPendingOutbreak();
+                else pendingSpawnIntent = new SpawnIntent(pending.Row, pending.Column, pending.TurnsRemaining - 1);
             }
 
             AnomalyIntent? executedIntent = null;
@@ -761,9 +689,7 @@ namespace ExcelHell.Prototype
             {
                 if (cell.State != CellState.Corrupted) continue;
                 if (spawnedThisResolve && cell.CorruptionAge == 0) continue;
-                if (executedIntent.HasValue && cell.Row == executedIntent.Value.TargetRow && cell.Column == executedIntent.Value.TargetColumn)
-                    continue;
-
+                if (executedIntent.HasValue && cell.Row == executedIntent.Value.TargetRow && cell.Column == executedIntent.Value.TargetColumn) continue;
                 cell.CorruptionAge++;
                 if (cell.CorruptionAge >= config.SafeCorruptionLifetime)
                 {
@@ -773,10 +699,7 @@ namespace ExcelHell.Prototype
             }
 
             var hasActiveRef = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
-            if (hasActiveRef)
-                GenerateIntent();
-            else
-                currentIntent = null;
+            if (hasActiveRef) GenerateIntent(); else currentIntent = null;
 
             if (hadActiveRefBeforeResolve && !hasActiveRef)
             {
@@ -784,16 +707,12 @@ namespace ExcelHell.Prototype
                 ScheduleNextOutbreak(config.SafeRespawnDelay);
             }
             else if (!pendingSpawnIntent.HasValue)
-            {
                 ScheduleNextOutbreak(hasActiveRef ? config.SafeActiveOutbreakDelay : config.SafeRespawnDelay);
-            }
         }
 
-        private bool IsIntentValid(AnomalyIntent intent)
-        {
-            return cells[intent.SourceRow, intent.SourceColumn].State == CellState.Corrupted &&
-                   cells[intent.TargetRow, intent.TargetColumn].State == CellState.Normal;
-        }
+        private bool IsIntentValid(AnomalyIntent intent) =>
+            cells[intent.SourceRow, intent.SourceColumn].State == CellState.Corrupted &&
+            cells[intent.TargetRow, intent.TargetColumn].State == CellState.Normal;
 
         private void GenerateIntent()
         {
@@ -827,8 +746,7 @@ namespace ExcelHell.Prototype
             {
                 var row = cell.Row + dr;
                 var column = cell.Column + dc;
-                if (row >= 0 && row < rows && column >= 0 && column < columns)
-                    yield return cells[row, column];
+                if (row >= 0 && row < rows && column >= 0 && column < columns) yield return cells[row, column];
             }
         }
 
@@ -844,18 +762,13 @@ namespace ExcelHell.Prototype
         private void OnSubmit()
         {
             if (finished) return;
-            if (goals.Count == 0)
-            {
-                SetStatus("ui.noGoals");
-                return;
-            }
+            if (goals.Count == 0) { SetStatus("ui.noGoals"); return; }
 
             var wrong = new List<string>();
             foreach (var goal in goals)
             {
                 var token = cells[goal.TargetRow, goal.TargetColumn].Occupant;
-                if (!goal.IsSatisfiedBy(token))
-                    wrong.Add(loc.Get(goal.NameStringId));
+                if (!goal.IsSatisfiedBy(token)) wrong.Add(loc.Get(goal.NameStringId));
             }
 
             if (wrong.Count == 0)
@@ -863,10 +776,7 @@ namespace ExcelHell.Prototype
                 finished = true;
                 statusText.text = loc.Format("ui.accepted", turn, config.SafeMaxTurns);
             }
-            else
-            {
-                statusText.text = loc.Format("ui.rejected", string.Join(", ", wrong));
-            }
+            else statusText.text = loc.Format("ui.rejected", string.Join(", ", wrong));
             RefreshAll();
         }
 
@@ -886,7 +796,7 @@ namespace ExcelHell.Prototype
         {
             for (var row = 0; row < rows; row++)
             for (var column = 0; column < columns; column++)
-                views[row, column]?.Refresh(cells[row, column], selection.Contains(cells[row, column]), IsIntentTarget(row, column), DisplayToken);
+                views[row, column]?.Refresh(cells[row, column], selection.Contains(cells[row, column]), IsIntentTarget(row, column), IsReportTarget(row, column), DisplayToken);
 
             titleText.text = loc.Get("ui.title");
             headingText.text = loc.Get("ui.reportTask");
@@ -903,18 +813,10 @@ namespace ExcelHell.Prototype
                 intentText.text = loc.Format("ui.refSpawn", cells[spawn.Row, spawn.Column].Address, spawn.TurnsRemaining);
             }
             else if (currentIntent.HasValue)
-            {
                 intentText.text = loc.Format("ui.refNext", cells[currentIntent.Value.TargetRow, currentIntent.Value.TargetColumn].Address);
-            }
-            else
-            {
-                intentText.text = loc.Get("ui.refNoPath");
-            }
+            else intentText.text = loc.Get("ui.refNoPath");
 
-            if (goals.Count == 0)
-            {
-                goalsText.text = loc.Get("ui.noGoals");
-            }
+            if (goals.Count == 0) goalsText.text = loc.Get("ui.noGoals");
             else
             {
                 goalsText.text = string.Join("\n", goals.Select(goal =>
@@ -927,18 +829,18 @@ namespace ExcelHell.Prototype
             }
         }
 
+        private bool IsReportTarget(int row, int column) => goals.Any(g => g.TargetRow == row && g.TargetColumn == column);
+
         private bool IsIntentTarget(int row, int column)
         {
-            if (pendingSpawnIntent.HasValue && pendingSpawnIntent.Value.Row == row && pendingSpawnIntent.Value.Column == column)
-                return true;
+            if (pendingSpawnIntent.HasValue && pendingSpawnIntent.Value.Row == row && pendingSpawnIntent.Value.Column == column) return true;
             return currentIntent.HasValue && currentIntent.Value.TargetRow == row && currentIntent.Value.TargetColumn == column;
         }
 
         private string DisplayToken(ContentToken token, bool compact)
         {
             if (token == null) return string.Empty;
-            if (token.Kind == ContentKind.RecordKey || token.Kind == ContentKind.FieldKey || token.Kind == ContentKind.Label)
-                return loc.Get(token.StringId);
+            if (token.Kind == ContentKind.RecordKey || token.Kind == ContentKind.FieldKey || token.Kind == ContentKind.Label) return loc.Get(token.StringId);
             return token.Number.HasValue ? FormatNumber(token.Number.Value) : string.Empty;
         }
 
@@ -1013,28 +915,37 @@ namespace ExcelHell.Prototype
         private int column;
         private Image background;
         private Text label;
+        private Outline outline;
 
-        public void Initialize(ExcelHellPrototype owner, int cellRow, int cellColumn, Image image, Text text)
+        public void Initialize(ExcelHellPrototype owner, int cellRow, int cellColumn, Image image, Text text, Outline cellOutline)
         {
             prototype = owner;
             row = cellRow;
             column = cellColumn;
             background = image;
             label = text;
+            outline = cellOutline;
         }
 
-        public void Refresh(CellModel model, bool selected, bool intentTarget, Func<ContentToken, bool, string> displayToken)
+        public void Refresh(CellModel model, bool selected, bool intentTarget, bool reportTarget, Func<ContentToken, bool, string> displayToken)
         {
+            outline.effectColor = selected
+                ? new Color(0.08f, 0.52f, 0.92f, 1f)
+                : reportTarget
+                    ? new Color(0.20f, 0.55f, 0.34f, 1f)
+                    : new Color(0.77f, 0.79f, 0.82f, 1f);
+            outline.effectDistance = selected ? new Vector2(3f, -3f) : reportTarget ? new Vector2(2f, -2f) : new Vector2(1f, -1f);
+
             if (model.State == CellState.Destroyed)
             {
-                background.color = new Color(0.16f, 0.17f, 0.18f, 1f);
+                background.color = selected ? new Color(0.23f, 0.31f, 0.38f, 1f) : new Color(0.16f, 0.17f, 0.18f, 1f);
                 label.color = new Color(0.74f, 0.76f, 0.78f, 1f);
                 label.text = "×";
                 return;
             }
             if (model.State == CellState.Corrupted)
             {
-                background.color = new Color(0.76f, 0.22f, 0.22f, 1f);
+                background.color = selected ? new Color(0.67f, 0.29f, 0.34f, 1f) : new Color(0.76f, 0.22f, 0.22f, 1f);
                 label.color = Color.white;
                 label.text = "#REF!";
                 return;
@@ -1044,12 +955,14 @@ namespace ExcelHell.Prototype
                 ? new Color(0.65f, 0.84f, 1f, 1f)
                 : intentTarget
                     ? new Color(1f, 0.73f, 0.34f, 1f)
-                    : model.Occupant?.Kind == ContentKind.RecordKey || model.Occupant?.Kind == ContentKind.FieldKey
-                        ? new Color(0.91f, 0.94f, 0.98f, 1f)
-                        : Color.white;
+                    : reportTarget
+                        ? new Color(0.88f, 0.96f, 0.89f, 1f)
+                        : model.Occupant?.Kind == ContentKind.RecordKey || model.Occupant?.Kind == ContentKind.FieldKey
+                            ? new Color(0.91f, 0.94f, 0.98f, 1f)
+                            : Color.white;
 
             label.color = new Color(0.12f, 0.13f, 0.15f, 1f);
-            label.fontStyle = model.Occupant?.Kind == ContentKind.RecordKey || model.Occupant?.Kind == ContentKind.FieldKey
+            label.fontStyle = reportTarget || model.Occupant?.Kind == ContentKind.RecordKey || model.Occupant?.Kind == ContentKind.FieldKey
                 ? FontStyle.Bold : FontStyle.Normal;
             label.text = displayToken(model.Occupant, false);
         }
@@ -1058,9 +971,7 @@ namespace ExcelHell.Prototype
         {
             if (eventData.button == PointerEventData.InputButton.Left) prototype.BeginSelection(row, column);
         }
-
         public void OnPointerEnter(PointerEventData eventData) => prototype.HoverSelection(row, column);
-
         public void OnPointerUp(PointerEventData eventData)
         {
             if (eventData.button == PointerEventData.InputButton.Left) prototype.EndSelection();
