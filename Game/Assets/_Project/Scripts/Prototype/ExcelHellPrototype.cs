@@ -38,8 +38,7 @@ namespace ExcelHell.Prototype
 
         private AnomalyIntent? currentIntent;
         private SpawnIntent? pendingSpawnIntent;
-        private int outbreaksSpawned;
-        private int nextSpawnPointIndex;
+        private int spawnSequence;
 
         private Text titleText;
         private Text headingText;
@@ -121,7 +120,6 @@ namespace ExcelHell.Prototype
 
             Place(0, reportColumn, ContentToken.Label("report.label", "label.report"));
             BuildReportGoals();
-            ReserveSpawnPoints();
 
             var values = new Dictionary<string, double[]>
             {
@@ -165,8 +163,7 @@ namespace ExcelHell.Prototype
                 PrototypeReportGoals flag,
                 string stringId,
                 double expected,
-                ReportGoalValidation validation,
-                IEnumerable<string> expectedSources,
+                IEnumerable<string> semanticSources,
                 string directToken = null,
                 IEnumerable<string> threatSources = null)
             {
@@ -176,8 +173,8 @@ namespace ExcelHell.Prototype
                 if (targetRow >= rows)
                     throw new InvalidOperationException("Too many report goals for the current board height.");
 
-                var sources = expectedSources?.ToArray() ?? Array.Empty<string>();
-                goals.Add(new ReportGoal(stringId, expected, targetRow, reportColumn, validation, sources, directToken));
+                var sources = semanticSources?.ToArray() ?? Array.Empty<string>();
+                goals.Add(new ReportGoal(stringId, expected, targetRow, reportColumn, sources, directToken));
                 reservedCells.Add((targetRow, reportColumn));
                 targetRow++;
 
@@ -195,12 +192,9 @@ namespace ExcelHell.Prototype
             var bonusAll = IdsForField("bonus");
             var hoursAll = IdsForField("hours");
 
-            AddGoal(PrototypeReportGoals.SalaryTotal, "goal.salary", 247d,
-                ReportGoalValidation.ExactProvenance, salaryAll);
-            AddGoal(PrototypeReportGoals.OvertimeTotal, "goal.overtime", 14d,
-                ReportGoalValidation.ExactProvenance, overtimeAll);
-            AddGoal(PrototypeReportGoals.BonusTotal, "goal.bonus", 20d,
-                ReportGoalValidation.ExactProvenance, bonusAll);
+            AddGoal(PrototypeReportGoals.SalaryTotal, "goal.salary", 247d, salaryAll);
+            AddGoal(PrototypeReportGoals.OvertimeTotal, "goal.overtime", 14d, overtimeAll);
+            AddGoal(PrototypeReportGoals.BonusTotal, "goal.bonus", 20d, bonusAll);
 
             var bonusAtLeastFour = new[]
             {
@@ -209,10 +203,10 @@ namespace ExcelHell.Prototype
                 DataId("kim", "bonus")
             };
             AddGoal(PrototypeReportGoals.BonusAtLeastFour, "goal.bonus4", 15d,
-                ReportGoalValidation.ExactProvenance, bonusAtLeastFour, threatSources: bonusAll);
+                bonusAtLeastFour, threatSources: bonusAll);
 
             AddGoal(PrototypeReportGoals.SalaryOfMaxOvertime, "goal.maxOvertimeSalary", 41d,
-                ReportGoalValidation.DirectToken, null, DataId("sidorov", "salary"),
+                new[] { DataId("sidorov", "salary") }, DataId("sidorov", "salary"),
                 overtimeAll.Concat(new[] { DataId("sidorov", "salary") }));
 
             var lowHoursSalaries = new[]
@@ -221,8 +215,7 @@ namespace ExcelHell.Prototype
                 DataId("kim", "salary")
             };
             AddGoal(PrototypeReportGoals.SalaryForHoursBelowForty, "goal.lowHoursSalary", 96d,
-                ReportGoalValidation.ExactProvenance, lowHoursSalaries,
-                threatSources: hoursAll.Concat(lowHoursSalaries));
+                lowHoursSalaries, threatSources: hoursAll.Concat(lowHoursSalaries));
         }
 
         private string[] IdsForField(string fieldId)
@@ -238,103 +231,99 @@ namespace ExcelHell.Prototype
                 cells[row, column].Occupant = token;
         }
 
-        private void ReserveSpawnPoints()
-        {
-            if (config.anomalySpawnPoints == null)
-                return;
-
-            foreach (var point in config.anomalySpawnPoints)
-            {
-                if (point == null)
-                    continue;
-                var row = point.row - 1;
-                var column = point.column - 1;
-                if (row >= 0 && row < rows && column >= 0 && column < columns && cells[row, column].Occupant == null)
-                    reservedCells.Add((row, column));
-            }
-        }
-
         private void InitializeAnomaly()
         {
             currentIntent = null;
             pendingSpawnIntent = null;
-            outbreaksSpawned = 0;
-            nextSpawnPointIndex = 0;
+            spawnSequence = 0;
 
-            if (config.SafeActivationTurn == 0)
-                SpawnNextOutbreak();
-            else
-                ScheduleNextOutbreak(config.SafeActivationTurn);
+            ScheduleNextOutbreak(config.SafeActivationTurn == 0 ? 1 : config.SafeActivationTurn);
         }
 
         private bool ScheduleNextOutbreak(int delay)
         {
-            if (outbreaksSpawned >= config.SafeMaxOutbreaks || pendingSpawnIntent.HasValue)
+            if (pendingSpawnIntent.HasValue)
                 return false;
 
-            if (!TryChooseSpawnCell(out var spawn))
+            if (!TryChooseDynamicSpawnCell(out var spawn))
                 return false;
 
             pendingSpawnIntent = new SpawnIntent(spawn.Row, spawn.Column, Mathf.Max(1, delay));
-            currentIntent = null;
             return true;
         }
 
-        private bool TryChooseSpawnCell(out CellModel result)
+        private bool TryChooseDynamicSpawnCell(out CellModel result)
         {
             result = null;
-            var points = config.anomalySpawnPoints;
-            if (points != null && points.Length > 0)
-            {
-                for (var attempt = 0; attempt < points.Length; attempt++)
-                {
-                    var index = (nextSpawnPointIndex + attempt) % points.Length;
-                    var point = points[index];
-                    if (point == null)
-                        continue;
-                    var row = point.row - 1;
-                    var column = point.column - 1;
-                    if (row < 0 || row >= rows || column < 0 || column >= columns)
-                        continue;
-                    var cell = cells[row, column];
-                    if (cell.State != CellState.Normal)
-                        continue;
 
-                    nextSpawnPointIndex = (index + 1) % points.Length;
-                    result = cell;
-                    return true;
-                }
+            var anchors = cells.Cast<CellModel>()
+                .Where(cell =>
+                    cell.State != CellState.Destroyed &&
+                    (cell.Occupant?.IsRequiredSource == true || goals.Any(g => g.TargetRow == cell.Row && g.TargetColumn == cell.Column)))
+                .ToList();
+
+            if (anchors.Count == 0)
+            {
+                anchors = cells.Cast<CellModel>()
+                    .Where(cell => cell.State != CellState.Destroyed && cell.Occupant != null)
+                    .ToList();
             }
 
-            result = cells.Cast<CellModel>()
+            if (anchors.Count == 0)
+                return false;
+
+            var preferred = config.SafeSpawnPreferredDistance;
+            var variation = config.SafeSpawnDistanceVariation;
+            var minDistance = Mathf.Max(1, preferred - variation);
+            var maxDistance = preferred + variation;
+
+            var candidates = cells.Cast<CellModel>()
                 .Where(cell => cell.State == CellState.Normal)
-                .OrderBy(DistanceToNearestRequiredToken)
-                .ThenBy(cell => cell.Row)
-                .ThenBy(cell => cell.Column)
-                .FirstOrDefault();
-            return result != null;
+                .Where(cell => !goals.Any(g => g.TargetRow == cell.Row && g.TargetColumn == cell.Column))
+                .Where(cell => cell.Occupant?.IsRequiredSource != true)
+                .Select(cell => new
+                {
+                    Cell = cell,
+                    Distance = anchors.Min(anchor => Mathf.Abs(anchor.Row - cell.Row) + Mathf.Abs(anchor.Column - cell.Column))
+                })
+                .Where(x => x.Distance > 0)
+                .OrderBy(x => x.Distance < minDistance ? minDistance - x.Distance : x.Distance > maxDistance ? x.Distance - maxDistance : 0)
+                .ThenBy(x => Mathf.Abs(x.Distance - preferred))
+                .ThenBy(x => x.Cell.Occupant == null ? 0 : 1)
+                .ThenBy(x => x.Cell.Row)
+                .ThenBy(x => x.Cell.Column)
+                .Select(x => x.Cell)
+                .ToList();
+
+            if (candidates.Count == 0)
+                return false;
+
+            var poolSize = Mathf.Min(config.SafeSpawnCandidatePoolSize, candidates.Count);
+            result = candidates[spawnSequence % poolSize];
+            spawnSequence++;
+            return true;
         }
 
-        private void SpawnNextOutbreak()
+        private bool TrySpawnPendingOutbreak()
         {
-            CellModel spawn;
-            if (pendingSpawnIntent.HasValue)
+            if (!pendingSpawnIntent.HasValue)
+                return false;
+
+            var intent = pendingSpawnIntent.Value;
+            var spawn = cells[intent.Row, intent.Column];
+
+            if (spawn.State != CellState.Normal || spawn.Occupant?.IsRequiredSource == true ||
+                goals.Any(g => g.TargetRow == spawn.Row && g.TargetColumn == spawn.Column))
             {
-                var intent = pendingSpawnIntent.Value;
-                spawn = cells[intent.Row, intent.Column];
                 pendingSpawnIntent = null;
-                if (spawn.State != CellState.Normal && !TryChooseSpawnCell(out spawn))
-                    return;
-            }
-            else if (!TryChooseSpawnCell(out spawn))
-            {
-                return;
+                ScheduleNextOutbreak(1);
+                return false;
             }
 
+            pendingSpawnIntent = null;
             spawn.State = CellState.Corrupted;
             spawn.CorruptionAge = 0;
-            outbreaksSpawned++;
-            GenerateIntent();
+            return true;
         }
 
         private void BuildUi()
@@ -742,6 +731,7 @@ namespace ExcelHell.Prototype
 
         private void ResolveAnomaly()
         {
+            var hadActiveRefBeforeResolve = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
             var spawnedThisResolve = false;
 
             if (pendingSpawnIntent.HasValue)
@@ -749,25 +739,12 @@ namespace ExcelHell.Prototype
                 var pending = pendingSpawnIntent.Value;
                 if (pending.TurnsRemaining <= 1)
                 {
-                    SpawnNextOutbreak();
-                    spawnedThisResolve = true;
+                    spawnedThisResolve = TrySpawnPendingOutbreak();
                 }
                 else
                 {
                     pendingSpawnIntent = new SpawnIntent(pending.Row, pending.Column, pending.TurnsRemaining - 1);
                 }
-            }
-
-            if (spawnedThisResolve)
-                return;
-
-            var hadActiveRef = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
-            if (!hadActiveRef)
-            {
-                currentIntent = null;
-                if (!pendingSpawnIntent.HasValue && outbreaksSpawned < config.SafeMaxOutbreaks)
-                    ScheduleNextOutbreak(config.SafeRespawnDelay);
-                return;
             }
 
             AnomalyIntent? executedIntent = null;
@@ -783,6 +760,7 @@ namespace ExcelHell.Prototype
             foreach (var cell in cells)
             {
                 if (cell.State != CellState.Corrupted) continue;
+                if (spawnedThisResolve && cell.CorruptionAge == 0) continue;
                 if (executedIntent.HasValue && cell.Row == executedIntent.Value.TargetRow && cell.Column == executedIntent.Value.TargetColumn)
                     continue;
 
@@ -794,15 +772,20 @@ namespace ExcelHell.Prototype
                 }
             }
 
-            if (cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted))
-            {
+            var hasActiveRef = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
+            if (hasActiveRef)
                 GenerateIntent();
-            }
             else
-            {
                 currentIntent = null;
-                if (outbreaksSpawned < config.SafeMaxOutbreaks)
-                    ScheduleNextOutbreak(config.SafeRespawnDelay);
+
+            if (hadActiveRefBeforeResolve && !hasActiveRef)
+            {
+                pendingSpawnIntent = null;
+                ScheduleNextOutbreak(config.SafeRespawnDelay);
+            }
+            else if (!pendingSpawnIntent.HasValue)
+            {
+                ScheduleNextOutbreak(hasActiveRef ? config.SafeActiveOutbreakDelay : config.SafeRespawnDelay);
             }
         }
 
@@ -922,10 +905,6 @@ namespace ExcelHell.Prototype
             else if (currentIntent.HasValue)
             {
                 intentText.text = loc.Format("ui.refNext", cells[currentIntent.Value.TargetRow, currentIntent.Value.TargetColumn].Address);
-            }
-            else if (outbreaksSpawned >= config.SafeMaxOutbreaks)
-            {
-                intentText.text = loc.Get("ui.refExhausted");
             }
             else
             {

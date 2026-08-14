@@ -20,13 +20,6 @@ namespace ExcelHell.Prototype
         Label
     }
 
-    public enum ReportGoalValidation
-    {
-        NumericValue,
-        ExactProvenance,
-        DirectToken
-    }
-
     [Serializable]
     public sealed class ContentToken
     {
@@ -94,7 +87,7 @@ namespace ExcelHell.Prototype
                 Id = id,
                 Kind = ContentKind.Aggregate,
                 Number = value,
-                SourceTokenIds = sourceTokenIds.Distinct().OrderBy(x => x).ToList()
+                SourceTokenIds = sourceTokenIds?.Distinct().OrderBy(x => x).ToList() ?? new List<string>()
             };
         }
     }
@@ -146,7 +139,8 @@ namespace ExcelHell.Prototype
         public readonly double Expected;
         public readonly int TargetRow;
         public readonly int TargetColumn;
-        public readonly ReportGoalValidation Validation;
+
+        // Kept as metadata for future optional quality/ending checks.
         public readonly HashSet<string> ExpectedSourceIds;
         public readonly string ExpectedDirectTokenId;
 
@@ -155,7 +149,6 @@ namespace ExcelHell.Prototype
             double expected,
             int targetRow,
             int targetColumn,
-            ReportGoalValidation validation = ReportGoalValidation.NumericValue,
             IEnumerable<string> expectedSourceIds = null,
             string expectedDirectTokenId = null)
         {
@@ -163,27 +156,13 @@ namespace ExcelHell.Prototype
             Expected = expected;
             TargetRow = targetRow;
             TargetColumn = targetColumn;
-            Validation = validation;
             ExpectedSourceIds = expectedSourceIds == null ? new HashSet<string>() : new HashSet<string>(expectedSourceIds);
             ExpectedDirectTokenId = expectedDirectTokenId;
         }
 
         public bool IsSatisfiedBy(ContentToken token)
         {
-            if (token?.Number == null || Math.Abs(token.Number.Value - Expected) > 0.001)
-                return false;
-
-            switch (Validation)
-            {
-                case ReportGoalValidation.NumericValue:
-                    return true;
-                case ReportGoalValidation.ExactProvenance:
-                    return token.SourceTokenIds != null && ExpectedSourceIds.SetEquals(token.SourceTokenIds);
-                case ReportGoalValidation.DirectToken:
-                    return token.Id == ExpectedDirectTokenId;
-                default:
-                    return false;
-            }
+            return token?.Number != null && Math.Abs(token.Number.Value - Expected) <= 0.001;
         }
     }
 
