@@ -42,15 +42,17 @@ namespace ExcelHell.Prototype
         [Min(1)] public int corruptionTurnsBeforeDestroy = 2;
 
         [Header("Dynamic #REF! spawn")]
-        [Tooltip("Desired Manhattan distance from report-critical data / report cells.")]
+        [Tooltip("Desired Manhattan distance from report-critical data.")]
         [Min(1)] public int spawnPreferredDistance = 2;
         [Tooltip("Allowed distance deviation around the preferred distance.")]
         [Min(0)] public int spawnDistanceVariation = 1;
-        [Tooltip("Number of best spawn candidates rotated through deterministically to avoid identical outbreaks.")]
+        [Tooltip("Number of equally strong spawn candidates considered before deterministic goal-aware selection.")]
         [Min(1)] public int spawnCandidatePoolSize = 4;
 
         [Header("Prototype debug")]
         public bool showExpectedAnswers = true;
+        [Tooltip("Shows and logs the anchors/candidate pool used by the dynamic #REF! spawn selector.")]
+        public bool showSpawnDebug = true;
 
         public int SafeRows => Mathf.Max(8, rows);
         public int SafeColumns => Mathf.Max(8, columns);
