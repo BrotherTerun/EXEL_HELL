@@ -14,6 +14,8 @@ namespace ExcelHell.Prototype
         private readonly List<ReportGoal> goals = new();
         private readonly List<(Text Text, string StringId)> localizedLabels = new();
         private readonly PrototypeLocalization loc = new();
+        private readonly HashSet<string> requiredForPlay = new();
+        private readonly HashSet<(int Row, int Column)> reservedCells = new();
 
         private ExcelHellPrototypeConfig config;
         private WorksheetSchema schema;
@@ -33,7 +35,11 @@ namespace ExcelHell.Prototype
         private int turn;
         private bool finished;
         private int aggregateCounter;
+
         private AnomalyIntent? currentIntent;
+        private SpawnIntent? pendingSpawnIntent;
+        private int outbreaksSpawned;
+        private int nextSpawnPointIndex;
 
         private Text titleText;
         private Text headingText;
@@ -70,9 +76,10 @@ namespace ExcelHell.Prototype
 
             EnsureEventSystem();
             BuildModel();
+            InitializeAnomaly();
             BuildUi();
             RefreshAll();
-            SetStatus("ui.select");
+            SetStatus(goals.Count == 0 ? "ui.noGoals" : "ui.select");
         }
 
         private void EnsureEventSystem()
@@ -113,9 +120,8 @@ namespace ExcelHell.Prototype
             Place(5, 0, ContentToken.RecordKey("kim"));
 
             Place(0, reportColumn, ContentToken.Label("report.label", "label.report"));
-            goals.Add(new ReportGoal("goal.salary", 247d, 1, reportColumn));
-            goals.Add(new ReportGoal("goal.overtime", 14d, 2, reportColumn));
-            goals.Add(new ReportGoal("goal.bonus", 20d, 3, reportColumn));
+            BuildReportGoals();
+            ReserveSpawnPoints();
 
             var values = new Dictionary<string, double[]>
             {
@@ -130,8 +136,8 @@ namespace ExcelHell.Prototype
             for (var recordIndex = 0; recordIndex < schema.Records.Count; recordIndex++)
             {
                 var record = schema.Records[recordIndex];
-                tokens.Add(ContentToken.Data(
-                    $"data.{record}.{field}", record, field, values[field][recordIndex], field != "hours"));
+                var id = DataId(record, field);
+                tokens.Add(ContentToken.Data(id, record, field, values[field][recordIndex], requiredForPlay.Contains(id)));
             }
 
             var scramble = new[] { 7, 13, 0, 18, 5, 16, 2, 11, 9, 1, 19, 4, 14, 6, 17, 3, 12, 8, 15, 10 };
@@ -140,34 +146,195 @@ namespace ExcelHell.Prototype
             for (var column = columns - 1; column >= 0; column--)
             {
                 var cell = cells[row, column];
-                if (cell.Occupant == null && !(row == GetSpawnRow() && column == GetSpawnColumn()))
+                if (cell.Occupant == null && !reservedCells.Contains((row, column)))
                     free.Add(cell);
             }
 
             if (free.Count < tokens.Count)
-                throw new InvalidOperationException($"Board {rows}x{columns} has no room for the prototype dataset.");
+                throw new InvalidOperationException($"Board {rows}x{columns} has no room for the prototype dataset and selected report goals.");
 
             for (var i = 0; i < tokens.Count; i++)
                 free[i].Occupant = tokens[scramble[i]];
         }
 
+        private void BuildReportGoals()
+        {
+            var targetRow = 1;
+
+            void AddGoal(
+                PrototypeReportGoals flag,
+                string stringId,
+                double expected,
+                ReportGoalValidation validation,
+                IEnumerable<string> expectedSources,
+                string directToken = null,
+                IEnumerable<string> threatSources = null)
+            {
+                if (!config.HasGoal(flag))
+                    return;
+
+                if (targetRow >= rows)
+                    throw new InvalidOperationException("Too many report goals for the current board height.");
+
+                var sources = expectedSources?.ToArray() ?? Array.Empty<string>();
+                goals.Add(new ReportGoal(stringId, expected, targetRow, reportColumn, validation, sources, directToken));
+                reservedCells.Add((targetRow, reportColumn));
+                targetRow++;
+
+                foreach (var id in sources)
+                    requiredForPlay.Add(id);
+                if (!string.IsNullOrEmpty(directToken))
+                    requiredForPlay.Add(directToken);
+                if (threatSources != null)
+                    foreach (var id in threatSources)
+                        requiredForPlay.Add(id);
+            }
+
+            var salaryAll = IdsForField("salary");
+            var overtimeAll = IdsForField("overtime");
+            var bonusAll = IdsForField("bonus");
+            var hoursAll = IdsForField("hours");
+
+            AddGoal(PrototypeReportGoals.SalaryTotal, "goal.salary", 247d,
+                ReportGoalValidation.ExactProvenance, salaryAll);
+            AddGoal(PrototypeReportGoals.OvertimeTotal, "goal.overtime", 14d,
+                ReportGoalValidation.ExactProvenance, overtimeAll);
+            AddGoal(PrototypeReportGoals.BonusTotal, "goal.bonus", 20d,
+                ReportGoalValidation.ExactProvenance, bonusAll);
+
+            var bonusAtLeastFour = new[]
+            {
+                DataId("ivanov", "bonus"),
+                DataId("volkova", "bonus"),
+                DataId("kim", "bonus")
+            };
+            AddGoal(PrototypeReportGoals.BonusAtLeastFour, "goal.bonus4", 15d,
+                ReportGoalValidation.ExactProvenance, bonusAtLeastFour, threatSources: bonusAll);
+
+            AddGoal(PrototypeReportGoals.SalaryOfMaxOvertime, "goal.maxOvertimeSalary", 41d,
+                ReportGoalValidation.DirectToken, null, DataId("sidorov", "salary"),
+                overtimeAll.Concat(new[] { DataId("sidorov", "salary") }));
+
+            var lowHoursSalaries = new[]
+            {
+                DataId("sidorov", "salary"),
+                DataId("kim", "salary")
+            };
+            AddGoal(PrototypeReportGoals.SalaryForHoursBelowForty, "goal.lowHoursSalary", 96d,
+                ReportGoalValidation.ExactProvenance, lowHoursSalaries,
+                threatSources: hoursAll.Concat(lowHoursSalaries));
+        }
+
+        private string[] IdsForField(string fieldId)
+        {
+            return schema.Records.Select(record => DataId(record, fieldId)).ToArray();
+        }
+
+        private static string DataId(string recordId, string fieldId) => $"data.{recordId}.{fieldId}";
+
         private void Place(int row, int column, ContentToken token)
         {
-            cells[row, column].Occupant = token;
+            if (row >= 0 && row < rows && column >= 0 && column < columns)
+                cells[row, column].Occupant = token;
         }
 
-        private int GetSpawnRow()
+        private void ReserveSpawnPoints()
         {
-            return config.anomalySpawnRow > 0
-                ? Mathf.Clamp(config.anomalySpawnRow - 1, 0, rows - 1)
-                : rows - 1;
+            if (config.anomalySpawnPoints == null)
+                return;
+
+            foreach (var point in config.anomalySpawnPoints)
+            {
+                if (point == null)
+                    continue;
+                var row = point.row - 1;
+                var column = point.column - 1;
+                if (row >= 0 && row < rows && column >= 0 && column < columns && cells[row, column].Occupant == null)
+                    reservedCells.Add((row, column));
+            }
         }
 
-        private int GetSpawnColumn()
+        private void InitializeAnomaly()
         {
-            return config.anomalySpawnColumn > 0
-                ? Mathf.Clamp(config.anomalySpawnColumn - 1, 0, columns - 1)
-                : 0;
+            currentIntent = null;
+            pendingSpawnIntent = null;
+            outbreaksSpawned = 0;
+            nextSpawnPointIndex = 0;
+
+            if (config.SafeActivationTurn == 0)
+                SpawnNextOutbreak();
+            else
+                ScheduleNextOutbreak(config.SafeActivationTurn);
+        }
+
+        private bool ScheduleNextOutbreak(int delay)
+        {
+            if (outbreaksSpawned >= config.SafeMaxOutbreaks || pendingSpawnIntent.HasValue)
+                return false;
+
+            if (!TryChooseSpawnCell(out var spawn))
+                return false;
+
+            pendingSpawnIntent = new SpawnIntent(spawn.Row, spawn.Column, Mathf.Max(1, delay));
+            currentIntent = null;
+            return true;
+        }
+
+        private bool TryChooseSpawnCell(out CellModel result)
+        {
+            result = null;
+            var points = config.anomalySpawnPoints;
+            if (points != null && points.Length > 0)
+            {
+                for (var attempt = 0; attempt < points.Length; attempt++)
+                {
+                    var index = (nextSpawnPointIndex + attempt) % points.Length;
+                    var point = points[index];
+                    if (point == null)
+                        continue;
+                    var row = point.row - 1;
+                    var column = point.column - 1;
+                    if (row < 0 || row >= rows || column < 0 || column >= columns)
+                        continue;
+                    var cell = cells[row, column];
+                    if (cell.State != CellState.Normal)
+                        continue;
+
+                    nextSpawnPointIndex = (index + 1) % points.Length;
+                    result = cell;
+                    return true;
+                }
+            }
+
+            result = cells.Cast<CellModel>()
+                .Where(cell => cell.State == CellState.Normal)
+                .OrderBy(DistanceToNearestRequiredToken)
+                .ThenBy(cell => cell.Row)
+                .ThenBy(cell => cell.Column)
+                .FirstOrDefault();
+            return result != null;
+        }
+
+        private void SpawnNextOutbreak()
+        {
+            CellModel spawn;
+            if (pendingSpawnIntent.HasValue)
+            {
+                var intent = pendingSpawnIntent.Value;
+                spawn = cells[intent.Row, intent.Column];
+                pendingSpawnIntent = null;
+                if (spawn.State != CellState.Normal && !TryChooseSpawnCell(out spawn))
+                    return;
+            }
+            else if (!TryChooseSpawnCell(out spawn))
+            {
+                return;
+            }
+
+            spawn.State = CellState.Corrupted;
+            spawn.CorruptionAge = 0;
+            outbreaksSpawned++;
+            GenerateIntent();
         }
 
         private void BuildUi()
@@ -234,28 +401,28 @@ namespace ExcelHell.Prototype
 
             CreateLocalizedButton(side.transform, "ui.language", 530, -12, ToggleLanguage, 100, out _);
 
-            goalsText = CreateText(side.transform, string.Empty, 19, FontStyle.Normal, TextAnchor.UpperLeft);
-            SetRect(goalsText.rectTransform, 20, -62, 620, 130, new Vector2(0, 1));
+            goalsText = CreateText(side.transform, string.Empty, 17, FontStyle.Normal, TextAnchor.UpperLeft);
+            SetRect(goalsText.rectTransform, 20, -62, 620, 180, new Vector2(0, 1));
 
             intentText = CreateText(side.transform, string.Empty, 19, FontStyle.Bold, TextAnchor.UpperLeft);
-            SetRect(intentText.rectTransform, 20, -196, 620, 58, new Vector2(0, 1));
+            SetRect(intentText.rectTransform, 20, -245, 620, 58, new Vector2(0, 1));
 
             clipboardTextUi = CreateText(side.transform, string.Empty, 18, FontStyle.Normal, TextAnchor.UpperLeft);
-            SetRect(clipboardTextUi.rectTransform, 20, -260, 620, 44, new Vector2(0, 1));
+            SetRect(clipboardTextUi.rectTransform, 20, -305, 620, 44, new Vector2(0, 1));
 
-            statusText = CreateText(side.transform, string.Empty, 17, FontStyle.Italic, TextAnchor.UpperLeft);
-            SetRect(statusText.rectTransform, 20, -312, 620, 86, new Vector2(0, 1));
+            statusText = CreateText(side.transform, string.Empty, 16, FontStyle.Italic, TextAnchor.UpperLeft);
+            SetRect(statusText.rectTransform, 20, -350, 620, 68, new Vector2(0, 1));
 
-            CreateLocalizedButton(side.transform, "ui.sum", 20, -420, OnSum, 112, out _);
-            CreateLocalizedButton(side.transform, "ui.sort", 142, -420, OnSort, 112, out _);
-            CreateLocalizedButton(side.transform, "ui.cut", 264, -420, OnCut, 112, out _);
-            CreateLocalizedButton(side.transform, "ui.paste", 386, -420, OnPaste, 112, out _);
-            CreateLocalizedButton(side.transform, "ui.delete", 508, -420, OnDelete, 112, out _);
-            CreateLocalizedButton(side.transform, "ui.submit", 20, -492, OnSubmit, 300, out _);
-            CreateLocalizedButton(side.transform, "ui.reset", 340, -492, ResetPrototype, 160, out _);
+            CreateLocalizedButton(side.transform, "ui.sum", 20, -430, OnSum, 112, out _);
+            CreateLocalizedButton(side.transform, "ui.sort", 142, -430, OnSort, 112, out _);
+            CreateLocalizedButton(side.transform, "ui.cut", 264, -430, OnCut, 112, out _);
+            CreateLocalizedButton(side.transform, "ui.paste", 386, -430, OnPaste, 112, out _);
+            CreateLocalizedButton(side.transform, "ui.delete", 508, -430, OnDelete, 112, out _);
+            CreateLocalizedButton(side.transform, "ui.submit", 20, -502, OnSubmit, 300, out _);
+            CreateLocalizedButton(side.transform, "ui.reset", 340, -502, ResetPrototype, 160, out _);
 
-            helpText = CreateText(side.transform, string.Empty, 16, FontStyle.Normal, TextAnchor.UpperLeft);
-            SetRect(helpText.rectTransform, 20, -570, 620, 175, new Vector2(0, 1));
+            helpText = CreateText(side.transform, string.Empty, 15, FontStyle.Normal, TextAnchor.UpperLeft);
+            SetRect(helpText.rectTransform, 20, -575, 620, 170, new Vector2(0, 1));
         }
 
         private ExcelHellCellView CreateDataCell(Transform parent, int row, int column)
@@ -471,8 +638,15 @@ namespace ExcelHell.Prototype
             }
 
             var count = pendingSumSources.Count;
-            foreach (var source in pendingSumSources) source.Occupant = null;
-            target.Occupant = ContentToken.Aggregate($"aggregate.{++aggregateCounter}", pendingSum);
+            var provenance = pendingSumSources
+                .SelectMany(source => source.Occupant.SourceTokenIds ?? new List<string>())
+                .Distinct()
+                .ToArray();
+
+            foreach (var source in pendingSumSources)
+                source.Occupant = null;
+
+            target.Occupant = ContentToken.Aggregate($"aggregate.{++aggregateCounter}", pendingSum, provenance);
             awaitingSumTarget = false;
             pendingSumSources = null;
             selection.Clear();
@@ -568,17 +742,31 @@ namespace ExcelHell.Prototype
 
         private void ResolveAnomaly()
         {
-            if (turn < config.SafeActivationTurn) return;
+            var spawnedThisResolve = false;
 
-            if (!cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted))
+            if (pendingSpawnIntent.HasValue)
             {
-                var spawn = cells[GetSpawnRow(), GetSpawnColumn()];
-                if (spawn.State == CellState.Normal)
+                var pending = pendingSpawnIntent.Value;
+                if (pending.TurnsRemaining <= 1)
                 {
-                    spawn.State = CellState.Corrupted;
-                    spawn.CorruptionAge = 0;
+                    SpawnNextOutbreak();
+                    spawnedThisResolve = true;
                 }
-                GenerateIntent();
+                else
+                {
+                    pendingSpawnIntent = new SpawnIntent(pending.Row, pending.Column, pending.TurnsRemaining - 1);
+                }
+            }
+
+            if (spawnedThisResolve)
+                return;
+
+            var hadActiveRef = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
+            if (!hadActiveRef)
+            {
+                currentIntent = null;
+                if (!pendingSpawnIntent.HasValue && outbreaksSpawned < config.SafeMaxOutbreaks)
+                    ScheduleNextOutbreak(config.SafeRespawnDelay);
                 return;
             }
 
@@ -605,7 +793,17 @@ namespace ExcelHell.Prototype
                     cell.Occupant = null;
                 }
             }
-            GenerateIntent();
+
+            if (cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted))
+            {
+                GenerateIntent();
+            }
+            else
+            {
+                currentIntent = null;
+                if (outbreaksSpawned < config.SafeMaxOutbreaks)
+                    ScheduleNextOutbreak(config.SafeRespawnDelay);
+            }
         }
 
         private bool IsIntentValid(AnomalyIntent intent)
@@ -663,11 +861,17 @@ namespace ExcelHell.Prototype
         private void OnSubmit()
         {
             if (finished) return;
+            if (goals.Count == 0)
+            {
+                SetStatus("ui.noGoals");
+                return;
+            }
+
             var wrong = new List<string>();
             foreach (var goal in goals)
             {
                 var token = cells[goal.TargetRow, goal.TargetColumn].Occupant;
-                if (token?.Number == null || Math.Abs(token.Number.Value - goal.Expected) > 0.001)
+                if (!goal.IsSatisfiedBy(token))
                     wrong.Add(loc.Get(goal.NameStringId));
             }
 
@@ -710,24 +914,44 @@ namespace ExcelHell.Prototype
             var clipboardValue = clipboard == null ? loc.Get("ui.empty") : DisplayToken(clipboard, true);
             clipboardTextUi.text = loc.Format("ui.clipboard", clipboardValue);
 
-            if (turn < config.SafeActivationTurn)
-                intentText.text = loc.Format("ui.refDormant", config.SafeActivationTurn);
-            else if (currentIntent.HasValue)
-                intentText.text = loc.Format("ui.refNext", cells[currentIntent.Value.TargetRow, currentIntent.Value.TargetColumn].Address);
-            else
-                intentText.text = loc.Get("ui.refNoPath");
-
-            goalsText.text = string.Join("\n", goals.Select(goal =>
+            if (pendingSpawnIntent.HasValue)
             {
-                var target = cells[goal.TargetRow, goal.TargetColumn];
-                var current = target.Occupant?.Number.HasValue == true ? FormatNumber(target.Occupant.Number.Value) : loc.Get("ui.empty");
-                var expected = config.showExpectedAnswers ? FormatNumber(goal.Expected) : "?";
-                return loc.Format("ui.goal", loc.Get(goal.NameStringId), current, expected, target.Address);
-            }));
+                var spawn = pendingSpawnIntent.Value;
+                intentText.text = loc.Format("ui.refSpawn", cells[spawn.Row, spawn.Column].Address, spawn.TurnsRemaining);
+            }
+            else if (currentIntent.HasValue)
+            {
+                intentText.text = loc.Format("ui.refNext", cells[currentIntent.Value.TargetRow, currentIntent.Value.TargetColumn].Address);
+            }
+            else if (outbreaksSpawned >= config.SafeMaxOutbreaks)
+            {
+                intentText.text = loc.Get("ui.refExhausted");
+            }
+            else
+            {
+                intentText.text = loc.Get("ui.refNoPath");
+            }
+
+            if (goals.Count == 0)
+            {
+                goalsText.text = loc.Get("ui.noGoals");
+            }
+            else
+            {
+                goalsText.text = string.Join("\n", goals.Select(goal =>
+                {
+                    var target = cells[goal.TargetRow, goal.TargetColumn];
+                    var current = target.Occupant?.Number.HasValue == true ? FormatNumber(target.Occupant.Number.Value) : loc.Get("ui.empty");
+                    var expected = config.showExpectedAnswers ? FormatNumber(goal.Expected) : "?";
+                    return loc.Format("ui.goal", loc.Get(goal.NameStringId), current, expected, target.Address);
+                }));
+            }
         }
 
         private bool IsIntentTarget(int row, int column)
         {
+            if (pendingSpawnIntent.HasValue && pendingSpawnIntent.Value.Row == row && pendingSpawnIntent.Value.Column == column)
+                return true;
             return currentIntent.HasValue && currentIntent.Value.TargetRow == row && currentIntent.Value.TargetColumn == column;
         }
 
