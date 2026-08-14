@@ -338,7 +338,9 @@ namespace ExcelHell.Prototype
             if (!selecting)
                 return;
 
-            UpdateSelection(row, column);
+            // PointerUp is delivered to the object where the press began, not necessarily
+            // to the cell currently under the pointer. The drag range has already been
+            // updated by OnPointerEnter, so only finish the drag here.
             selecting = false;
         }
 
