@@ -23,14 +23,22 @@ namespace ExcelHell.Prototype
     [Serializable]
     public sealed class ContentToken
     {
+        private double? number;
+
         public string Id;
         public ContentKind Kind;
         public string StringId;
         public string RecordId;
         public string FieldId;
-        public double? Number;
+        public bool IsAccessible = true;
         public bool IsRequiredSource;
         public List<string> SourceTokenIds = new();
+
+        public double? Number
+        {
+            get => IsAccessible ? number : null;
+            set => number = value;
+        }
 
         public bool IsNumeric => Number.HasValue;
 
@@ -96,11 +104,23 @@ namespace ExcelHell.Prototype
     [Serializable]
     public sealed class CellModel
     {
+        private CellState state;
+
         public int Row;
         public int Column;
-        public CellState State;
         public int CorruptionAge;
         public ContentToken Occupant;
+
+        public CellState State
+        {
+            get => state;
+            set
+            {
+                state = value;
+                if (value != CellState.Normal && Occupant != null)
+                    Occupant.IsAccessible = false;
+            }
+        }
 
         public string Address => $"{ExcelHellPrototype.ColumnName(Column)}{Row + 1}";
         public bool IsEmpty => Occupant == null;
