@@ -14,7 +14,7 @@ namespace ExcelHell.Prototype
         {
             [PrototypeLanguage.Russian] = new Dictionary<string, string>
             {
-                ["ui.title"] = "EXEL HELL // MVP 0.3",
+                ["ui.title"] = "EXEL HELL // MVP 0.4",
                 ["ui.reportTask"] = "ЗАДАЧА ОТЧЁТА",
                 ["ui.sum"] = "SUM",
                 ["ui.sort"] = "SORT",
@@ -31,12 +31,14 @@ namespace ExcelHell.Prototype
                 ["ui.refNoPath"] = "#REF! изолирован — ожидается следующая вспышка",
                 ["ui.refSpawn"] = "НОВЫЙ #REF! → {0} через {1} ход(а)",
                 ["ui.spill"] = "#SPILL! Недостаточно непрерывного свободного места.",
-                ["ui.select"] = "Выберите данные или ключ. SORT собирает связанную группу; SUM схлопывает числовой диапазон.",
+                ["ui.select"] = "Выберите данные или ключ. SORT собирает связанную группу; SUM работает минимум с двумя числами.",
                 ["ui.sumNeedRange"] = "SUM нужен выделенный числовой диапазон.",
+                ["ui.sumNeedTwo"] = "SUM требует минимум две числовые клетки.",
                 ["ui.sumInvalid"] = "SUM принимает только обычные числовые токены и агрегаты.",
-                ["ui.sumTarget"] = "SUM = {0}. Выберите пустую обычную клетку для результата.",
+                ["ui.sumTarget"] = "SUM = {0}. Выберите пустую клетку для результата.",
                 ["ui.sumBadTarget"] = "Результат SUM можно поместить только в пустую обычную клетку.",
                 ["ui.sumDone"] = "SUM схлопнул {0} значений в {1}.",
+                ["ui.sumReported"] = "SUM записал результат из {0} значений в отчёт {1}; источники сохранены.",
                 ["ui.sortNeedKey"] = "SORT требует ровно один ключ записи или параметра.",
                 ["ui.sortDone"] = "SORT собрал {0} значений вокруг ключа {1}{2}.",
                 ["ui.sortFallback"] = " (альтернативное направление)",
@@ -55,7 +57,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "ОТЧЁТ ОТКЛОНЁН: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "В Config не выбрано ни одной задачи отчёта.",
-                ["ui.help"] = "SORT собирает связанные данные. SUM поглощает диапазон.\nSUBMIT проверяет итоговые числа — начальнику всё равно, как вы их получили.\nDELETE локализует один #REF!, но новые очаги возникают постоянно.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed.",
+                ["ui.help"] = "Зелёные клетки — поля отчёта. SORT собирает связанные данные.\nSUM в таблице поглощает диапазон; SUM прямо в отчёт считает ответ без уничтожения источников.\nSUBMIT проверяет только итоговые числа. DELETE локализует один #REF!, но вспышки продолжаются.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
 
                 ["record.ivanov"] = "Иванов",
                 ["record.petrov"] = "Петров",
@@ -70,13 +72,13 @@ namespace ExcelHell.Prototype
                 ["goal.salary"] = "Итого зарплата",
                 ["goal.overtime"] = "Итого переработки",
                 ["goal.bonus"] = "Итого премии",
-                ["goal.bonus4"] = "Премии ≥ 4",
+                ["goal.bonus5"] = "Премии ≥ 5",
                 ["goal.maxOvertimeSalary"] = "Зарплата сотрудника с max переработкой",
                 ["goal.lowHoursSalary"] = "Зарплаты сотрудников с часами < 40"
             },
             [PrototypeLanguage.English] = new Dictionary<string, string>
             {
-                ["ui.title"] = "EXEL HELL // MVP 0.3",
+                ["ui.title"] = "EXEL HELL // MVP 0.4",
                 ["ui.reportTask"] = "REPORT TASK",
                 ["ui.sum"] = "SUM",
                 ["ui.sort"] = "SORT",
@@ -93,12 +95,14 @@ namespace ExcelHell.Prototype
                 ["ui.refNoPath"] = "#REF! isolated — waiting for the next outbreak",
                 ["ui.refSpawn"] = "NEW #REF! → {0} in {1} turn(s)",
                 ["ui.spill"] = "#SPILL! Not enough contiguous free space.",
-                ["ui.select"] = "Select data or a key. SORT assembles a semantic group; SUM collapses a numeric range.",
+                ["ui.select"] = "Select data or a key. SORT assembles a semantic group; SUM needs at least two numbers.",
                 ["ui.sumNeedRange"] = "SUM needs a selected numeric range.",
+                ["ui.sumNeedTwo"] = "SUM requires at least two numeric cells.",
                 ["ui.sumInvalid"] = "SUM accepts only normal numeric tokens and aggregates.",
-                ["ui.sumTarget"] = "SUM = {0}. Pick an empty Normal cell for the result.",
+                ["ui.sumTarget"] = "SUM = {0}. Pick an empty cell for the result.",
                 ["ui.sumBadTarget"] = "SUM result needs an empty Normal cell.",
                 ["ui.sumDone"] = "SUM collapsed {0} values into {1}.",
+                ["ui.sumReported"] = "SUM wrote {0} values into report cell {1}; sources were preserved.",
                 ["ui.sortNeedKey"] = "SORT needs exactly one record or field key.",
                 ["ui.sortDone"] = "SORT assembled {0} values around {1}{2}.",
                 ["ui.sortFallback"] = " (fallback direction)",
@@ -117,7 +121,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "REPORT REJECTED: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "No report goals selected in Config.",
-                ["ui.help"] = "SORT assembles related data. SUM consumes a range.\nSUBMIT checks final numbers — the boss does not care how you got them.\nDELETE quarantines one #REF!, but new outbreaks keep appearing.\nOrange = Intent, red = #REF!, black = Destroyed.",
+                ["ui.help"] = "Green cells are report targets. SORT assembles related data.\nSUM in worksheet space consumes its range; SUM directly into a report cell calculates without consuming sources.\nSUBMIT checks final numbers only. DELETE quarantines one #REF!, but outbreaks continue.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
 
                 ["record.ivanov"] = "Ivanov",
                 ["record.petrov"] = "Petrov",
@@ -132,7 +136,7 @@ namespace ExcelHell.Prototype
                 ["goal.salary"] = "Salary total",
                 ["goal.overtime"] = "Overtime total",
                 ["goal.bonus"] = "Bonus total",
-                ["goal.bonus4"] = "Bonuses ≥ 4",
+                ["goal.bonus5"] = "Bonuses ≥ 5",
                 ["goal.maxOvertimeSalary"] = "Salary of employee with max overtime",
                 ["goal.lowHoursSalary"] = "Salaries of employees with hours < 40"
             }
