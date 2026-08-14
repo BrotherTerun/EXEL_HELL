@@ -33,7 +33,7 @@ namespace ExcelHell.Prototype
                 ["ui.spill"] = "#SPILL! Недостаточно непрерывного свободного места.",
                 ["ui.select"] = "Выберите данные или ключ. SORT собирает связанную группу; SUM схлопывает числовой диапазон.",
                 ["ui.sumNeedRange"] = "SUM нужен выделенный числовой диапазон.",
-                ["ui.sumInvalid"] = "SUM принимает только целые обычные числовые токены.",
+                ["ui.sumInvalid"] = "SUM принимает только обычные числовые токены.",
                 ["ui.sumTarget"] = "SUM = {0}. Выберите пустую обычную клетку для результата.",
                 ["ui.sumBadTarget"] = "Результат SUM можно поместить только в пустую обычную клетку.",
                 ["ui.sumDone"] = "SUM схлопнул {0} значений в {1}.",
@@ -47,13 +47,14 @@ namespace ExcelHell.Prototype
                 ["ui.pasteDone"] = "Вставлено в {0}.",
                 ["ui.deleteNeed"] = "УДАЛИТЬ требует одну клетку.",
                 ["ui.deleteDone"] = "Клетка {0} уничтожена.",
+                ["ui.quarantineDone"] = "#REF! в {0} карантинизирован: клетка уничтожена, источник распространения удалён.",
                 ["ui.finishSum"] = "Сначала выберите клетку для результата SUM.",
                 ["ui.finished"] = "Уровень завершён. Нажмите СБРОС.",
                 ["ui.deadline"] = "ДЕДЛАЙН ПРОПУЩЕН. Нажмите СБРОС.",
                 ["ui.accepted"] = "ОТЧЁТ ПРИНЯТ на ходу {0}/{1}.",
                 ["ui.rejected"] = "ОТЧЁТ ОТКЛОНЁН: {0}",
-                ["ui.goal"] = "{0}: {1} / ? → {2}",
-                ["ui.help"] = "Перетаскивайте ЛКМ для диапазона.\nSORT: один ключ записи/параметра → собрать связанные данные.\nSUM: числовой диапазон → SUM → пустая клетка; исходники исчезают.\nОранжевый = цель #REF!, красный = заражение, чёрный = уничтожено.",
+                ["ui.goal"] = "{0}: {1} / {2} → {3}",
+                ["ui.help"] = "Перетаскивайте ЛКМ для диапазона.\nSORT собирает связанную группу. SUM схлопывает числовой диапазон.\nКрасный #REF! — активное заражение: клетка заблокирована, распространяется и позже погибает.\nЧёрная клетка — инертная уничтоженная дырка. DELETE по #REF! карантинизирует его.",
 
                 ["record.ivanov"] = "Иванов",
                 ["record.petrov"] = "Петров",
@@ -104,13 +105,14 @@ namespace ExcelHell.Prototype
                 ["ui.pasteDone"] = "Pasted into {0}.",
                 ["ui.deleteNeed"] = "DELETE needs one cell.",
                 ["ui.deleteDone"] = "Cell {0} destroyed.",
+                ["ui.quarantineDone"] = "#REF! at {0} quarantined: the cell is destroyed and stops spreading.",
                 ["ui.finishSum"] = "Finish SUM by picking its result cell.",
                 ["ui.finished"] = "Run finished. Press RESET.",
                 ["ui.deadline"] = "DEADLINE MISSED. Press RESET.",
                 ["ui.accepted"] = "REPORT ACCEPTED on turn {0}/{1}.",
                 ["ui.rejected"] = "REPORT REJECTED: {0}",
-                ["ui.goal"] = "{0}: {1} / ? → {2}",
-                ["ui.help"] = "Drag LMB to select a range.\nSORT: one record/field key → assemble related data.\nSUM: numeric range → SUM → empty cell; source tokens disappear.\nOrange = #REF! intent, red = corrupted, black = destroyed.",
+                ["ui.goal"] = "{0}: {1} / {2} → {3}",
+                ["ui.help"] = "Drag LMB to select a range.\nSORT assembles related data. SUM collapses a numeric range.\nRed #REF! is active infection: the cell is locked, spreads, then dies.\nBlack cells are inert destroyed holes. DELETE on #REF! quarantines it.",
 
                 ["record.ivanov"] = "Ivanov",
                 ["record.petrov"] = "Petrov",
@@ -137,9 +139,7 @@ namespace ExcelHell.Prototype
 
         public string Get(string id)
         {
-            if (tables[Language].TryGetValue(id, out var value))
-                return value;
-            return id;
+            return tables[Language].TryGetValue(id, out var value) ? value : id;
         }
 
         public string Format(string id, params object[] args)
