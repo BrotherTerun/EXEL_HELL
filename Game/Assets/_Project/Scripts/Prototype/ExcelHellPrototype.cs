@@ -237,10 +237,7 @@ namespace ExcelHell.Prototype
             pendingSpawnIntent = null;
             spawnSequence = 0;
 
-            if (config.SafeActivationTurn == 0)
-                ScheduleNextOutbreak(1);
-            else
-                ScheduleNextOutbreak(config.SafeActivationTurn);
+            ScheduleNextOutbreak(config.SafeActivationTurn == 0 ? 1 : config.SafeActivationTurn);
         }
 
         private bool ScheduleNextOutbreak(int delay)
@@ -326,7 +323,6 @@ namespace ExcelHell.Prototype
             pendingSpawnIntent = null;
             spawn.State = CellState.Corrupted;
             spawn.CorruptionAge = 0;
-            GenerateIntent();
             return true;
         }
 
@@ -735,6 +731,7 @@ namespace ExcelHell.Prototype
 
         private void ResolveAnomaly()
         {
+            var hadActiveRefBeforeResolve = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
             var spawnedThisResolve = false;
 
             if (pendingSpawnIntent.HasValue)
@@ -763,8 +760,7 @@ namespace ExcelHell.Prototype
             foreach (var cell in cells)
             {
                 if (cell.State != CellState.Corrupted) continue;
-                if (spawnedThisResolve && pendingSpawnIntent == null && cell.CorruptionAge == 0)
-                    continue;
+                if (spawnedThisResolve && cell.CorruptionAge == 0) continue;
                 if (executedIntent.HasValue && cell.Row == executedIntent.Value.TargetRow && cell.Column == executedIntent.Value.TargetColumn)
                     continue;
 
@@ -782,8 +778,15 @@ namespace ExcelHell.Prototype
             else
                 currentIntent = null;
 
-            if (!pendingSpawnIntent.HasValue)
+            if (hadActiveRefBeforeResolve && !hasActiveRef)
+            {
+                pendingSpawnIntent = null;
+                ScheduleNextOutbreak(config.SafeRespawnDelay);
+            }
+            else if (!pendingSpawnIntent.HasValue)
+            {
                 ScheduleNextOutbreak(hasActiveRef ? config.SafeActiveOutbreakDelay : config.SafeRespawnDelay);
+            }
         }
 
         private bool IsIntentValid(AnomalyIntent intent)
