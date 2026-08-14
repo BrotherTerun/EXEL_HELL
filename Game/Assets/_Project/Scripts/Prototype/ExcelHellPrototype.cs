@@ -10,19 +10,19 @@ namespace ExcelHell.Prototype
 {
     public sealed class ExcelHellPrototype : MonoBehaviour
     {
-        public const int Rows = 10;
-        public const int Columns = 10;
-        private const int MaxTurns = 15;
-        private const int AnomalyActivationTurn = 3;
-
-        private readonly CellModel[,] cells = new CellModel[Rows, Columns];
-        private readonly ExcelHellCellView[,] views = new ExcelHellCellView[Rows, Columns];
         private readonly List<CellModel> selection = new();
         private readonly List<ReportGoal> goals = new();
         private readonly List<(Text Text, string StringId)> localizedLabels = new();
         private readonly PrototypeLocalization loc = new();
 
+        private ExcelHellPrototypeConfig config;
         private WorksheetSchema schema;
+        private CellModel[,] cells;
+        private ExcelHellCellView[,] views;
+        private int rows;
+        private int columns;
+        private int reportColumn;
+
         private bool selecting;
         private int selectionStartRow;
         private int selectionStartColumn;
@@ -43,7 +43,6 @@ namespace ExcelHell.Prototype
         private Text statusText;
         private Text goalsText;
         private Text helpText;
-        private Text languageButtonText;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -51,12 +50,24 @@ namespace ExcelHell.Prototype
             if (FindFirstObjectByType<ExcelHellPrototype>() != null)
                 return;
 
-            var root = new GameObject("EXEL HELL Prototype");
-            root.AddComponent<ExcelHellPrototype>();
+            new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
         }
 
         private void Awake()
         {
+            config = Resources.Load<ExcelHellPrototypeConfig>("ExcelHellPrototypeConfig");
+            if (config == null)
+            {
+                config = ScriptableObject.CreateInstance<ExcelHellPrototypeConfig>();
+                Debug.LogWarning("EXEL HELL: Resources/ExcelHellPrototypeConfig.asset not found. Runtime defaults are used.");
+            }
+
+            rows = config.SafeRows;
+            columns = config.SafeColumns;
+            reportColumn = columns - 1;
+            cells = new CellModel[rows, columns];
+            views = new ExcelHellCellView[rows, columns];
+
             EnsureEventSystem();
             BuildModel();
             BuildUi();
@@ -69,8 +80,8 @@ namespace ExcelHell.Prototype
             if (FindFirstObjectByType<EventSystem>() != null)
                 return;
 
-            var eventSystemObject = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
-            eventSystemObject.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
+            var go = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            go.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
         }
 
         private void BuildModel()
@@ -79,8 +90,8 @@ namespace ExcelHell.Prototype
                 new[] { "ivanov", "petrov", "sidorov", "volkova", "kim" },
                 new[] { "hours", "salary", "overtime", "bonus" });
 
-            for (var row = 0; row < Rows; row++)
-            for (var column = 0; column < Columns; column++)
+            for (var row = 0; row < rows; row++)
+            for (var column = 0; column < columns; column++)
             {
                 cells[row, column] = new CellModel
                 {
@@ -90,27 +101,22 @@ namespace ExcelHell.Prototype
                 };
             }
 
-            // Field keys define vertical projections.
             Place(0, 1, ContentToken.FieldKey("hours"));
             Place(0, 2, ContentToken.FieldKey("salary"));
             Place(0, 3, ContentToken.FieldKey("overtime"));
             Place(0, 4, ContentToken.FieldKey("bonus"));
 
-            // Record keys define horizontal projections. Record SORT spills right.
             Place(1, 0, ContentToken.RecordKey("ivanov"));
             Place(2, 0, ContentToken.RecordKey("petrov"));
             Place(3, 0, ContentToken.RecordKey("sidorov"));
             Place(4, 0, ContentToken.RecordKey("volkova"));
             Place(5, 0, ContentToken.RecordKey("kim"));
 
-            // Report area.
-            Place(0, 7, ContentToken.Label("report.label", "label.report"));
-            goals.Add(new ReportGoal("goal.salary", 247d, 1, 7));
-            goals.Add(new ReportGoal("goal.overtime", 14d, 2, 7));
-            goals.Add(new ReportGoal("goal.bonus", 20d, 3, 7));
+            Place(0, reportColumn, ContentToken.Label("report.label", "label.report"));
+            goals.Add(new ReportGoal("goal.salary", 247d, 1, reportColumn));
+            goals.Add(new ReportGoal("goal.overtime", 14d, 2, reportColumn));
+            goals.Add(new ReportGoal("goal.bonus", 20d, 3, reportColumn));
 
-            // Semantic data is deliberately detached from its visual row/column.
-            // The 20 tokens occupy F7:J10 and keep recordId/fieldId internally.
             var values = new Dictionary<string, double[]>
             {
                 ["hours"] = new[] { 40d, 40d, 32d, 44d, 36d },
@@ -125,19 +131,24 @@ namespace ExcelHell.Prototype
             {
                 var record = schema.Records[recordIndex];
                 tokens.Add(ContentToken.Data(
-                    $"data.{record}.{field}",
-                    record,
-                    field,
-                    values[field][recordIndex],
-                    field != "hours"));
+                    $"data.{record}.{field}", record, field, values[field][recordIndex], field != "hours"));
             }
 
-            // Fixed scramble: deterministic for tests, visually unstructured.
             var scramble = new[] { 7, 13, 0, 18, 5, 16, 2, 11, 9, 1, 19, 4, 14, 6, 17, 3, 12, 8, 15, 10 };
-            var index = 0;
-            for (var row = 6; row < 10; row++)
-            for (var column = 5; column < 10; column++)
-                Place(row, column, tokens[scramble[index++]]);
+            var free = new List<CellModel>();
+            for (var row = rows - 1; row >= 0; row--)
+            for (var column = columns - 1; column >= 0; column--)
+            {
+                var cell = cells[row, column];
+                if (cell.Occupant == null && !(row == GetSpawnRow() && column == GetSpawnColumn()))
+                    free.Add(cell);
+            }
+
+            if (free.Count < tokens.Count)
+                throw new InvalidOperationException($"Board {rows}x{columns} has no room for the prototype dataset.");
+
+            for (var i = 0; i < tokens.Count; i++)
+                free[i].Occupant = tokens[scramble[i]];
         }
 
         private void Place(int row, int column, ContentToken token)
@@ -145,13 +156,25 @@ namespace ExcelHell.Prototype
             cells[row, column].Occupant = token;
         }
 
+        private int GetSpawnRow()
+        {
+            return config.anomalySpawnRow > 0
+                ? Mathf.Clamp(config.anomalySpawnRow - 1, 0, rows - 1)
+                : rows - 1;
+        }
+
+        private int GetSpawnColumn()
+        {
+            return config.anomalySpawnColumn > 0
+                ? Mathf.Clamp(config.anomalySpawnColumn - 1, 0, columns - 1)
+                : 0;
+        }
+
         private void BuildUi()
         {
             var canvasObject = new GameObject("Prototype Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             canvasObject.transform.SetParent(transform, false);
-
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasObject.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
 
             var scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -173,24 +196,30 @@ namespace ExcelHell.Prototype
 
         private void BuildGrid(Transform parent)
         {
+            const float maxWidth = 836f;
+            const float maxHeight = 650f;
+            var cellWidth = Mathf.Min(86f, maxWidth / (columns + 1));
+            var cellHeight = Mathf.Min(58f, maxHeight / (rows + 1));
+
             var gridRoot = new GameObject("Spreadsheet", typeof(RectTransform), typeof(GridLayoutGroup));
             gridRoot.transform.SetParent(parent, false);
-            SetRect(gridRoot.GetComponent<RectTransform>(), 24, -82, 836, 572, new Vector2(0, 1));
+            SetRect(gridRoot.GetComponent<RectTransform>(), 24, -82,
+                cellWidth * (columns + 1), cellHeight * (rows + 1), new Vector2(0, 1));
 
             var layout = gridRoot.GetComponent<GridLayoutGroup>();
             layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            layout.constraintCount = Columns + 1;
-            layout.cellSize = new Vector2(76, 52);
+            layout.constraintCount = columns + 1;
+            layout.cellSize = new Vector2(cellWidth, cellHeight);
             layout.spacing = Vector2.zero;
 
             CreateHeaderCell(gridRoot.transform, string.Empty);
-            for (var column = 0; column < Columns; column++)
+            for (var column = 0; column < columns; column++)
                 CreateHeaderCell(gridRoot.transform, ColumnName(column));
 
-            for (var row = 0; row < Rows; row++)
+            for (var row = 0; row < rows; row++)
             {
                 CreateHeaderCell(gridRoot.transform, (row + 1).ToString());
-                for (var column = 0; column < Columns; column++)
+                for (var column = 0; column < columns; column++)
                     views[row, column] = CreateDataCell(gridRoot.transform, row, column);
             }
         }
@@ -203,7 +232,7 @@ namespace ExcelHell.Prototype
             headingText = CreateText(side.transform, string.Empty, 24, FontStyle.Bold, TextAnchor.UpperLeft);
             SetRect(headingText.rectTransform, 20, -18, 500, 38, new Vector2(0, 1));
 
-            CreateLocalizedButton(side.transform, "ui.language", 530, -12, ToggleLanguage, 100, out languageButtonText);
+            CreateLocalizedButton(side.transform, "ui.language", 530, -12, ToggleLanguage, 100, out _);
 
             goalsText = CreateText(side.transform, string.Empty, 19, FontStyle.Normal, TextAnchor.UpperLeft);
             SetRect(goalsText.rectTransform, 20, -62, 620, 130, new Vector2(0, 1));
@@ -231,51 +260,48 @@ namespace ExcelHell.Prototype
 
         private ExcelHellCellView CreateDataCell(Transform parent, int row, int column)
         {
-            var cellObject = new GameObject($"Cell {ColumnName(column)}{row + 1}", typeof(RectTransform), typeof(Image), typeof(Outline), typeof(ExcelHellCellView));
-            cellObject.transform.SetParent(parent, false);
-
-            var image = cellObject.GetComponent<Image>();
+            var go = new GameObject($"Cell {ColumnName(column)}{row + 1}", typeof(RectTransform), typeof(Image), typeof(Outline), typeof(ExcelHellCellView));
+            go.transform.SetParent(parent, false);
+            var image = go.GetComponent<Image>();
             image.color = Color.white;
-            var outline = cellObject.GetComponent<Outline>();
+            var outline = go.GetComponent<Outline>();
             outline.effectColor = new Color(0.77f, 0.79f, 0.82f, 1f);
             outline.effectDistance = new Vector2(1f, -1f);
 
-            var label = CreateText(cellObject.transform, string.Empty, 14, FontStyle.Normal, TextAnchor.MiddleCenter);
+            var label = CreateText(go.transform, string.Empty, 14, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(label.rectTransform, 3);
             label.raycastTarget = false;
 
-            var view = cellObject.GetComponent<ExcelHellCellView>();
+            var view = go.GetComponent<ExcelHellCellView>();
             view.Initialize(this, row, column, image, label);
             return view;
         }
 
         private void CreateHeaderCell(Transform parent, string text)
         {
-            var header = new GameObject("Header", typeof(RectTransform), typeof(Image), typeof(Outline));
-            header.transform.SetParent(parent, false);
-            header.GetComponent<Image>().color = new Color(0.88f, 0.89f, 0.91f, 1f);
-            var outline = header.GetComponent<Outline>();
+            var go = new GameObject("Header", typeof(RectTransform), typeof(Image), typeof(Outline));
+            go.transform.SetParent(parent, false);
+            go.GetComponent<Image>().color = new Color(0.88f, 0.89f, 0.91f, 1f);
+            var outline = go.GetComponent<Outline>();
             outline.effectColor = new Color(0.72f, 0.74f, 0.78f, 1f);
             outline.effectDistance = new Vector2(1f, -1f);
-
-            var label = CreateText(header.transform, text, 15, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var label = CreateText(go.transform, text, 15, FontStyle.Bold, TextAnchor.MiddleCenter);
             Stretch(label.rectTransform, 3);
             label.raycastTarget = false;
         }
 
         private void CreateLocalizedButton(Transform parent, string stringId, float x, float y, Action callback, float width, out Text label)
         {
-            var buttonObject = new GameObject(stringId, typeof(RectTransform), typeof(Image), typeof(Button));
-            buttonObject.transform.SetParent(parent, false);
-            SetRect(buttonObject.GetComponent<RectTransform>(), x, y, width, 52, new Vector2(0, 1));
-
-            var image = buttonObject.GetComponent<Image>();
+            var go = new GameObject(stringId, typeof(RectTransform), typeof(Image), typeof(Button));
+            go.transform.SetParent(parent, false);
+            SetRect(go.GetComponent<RectTransform>(), x, y, width, 52, new Vector2(0, 1));
+            var image = go.GetComponent<Image>();
             image.color = new Color(0.84f, 0.87f, 0.91f, 1f);
-            var button = buttonObject.GetComponent<Button>();
+            var button = go.GetComponent<Button>();
             button.targetGraphic = image;
             button.onClick.AddListener(() => callback());
 
-            label = CreateText(buttonObject.transform, string.Empty, 15, FontStyle.Bold, TextAnchor.MiddleCenter);
+            label = CreateText(go.transform, string.Empty, 15, FontStyle.Bold, TextAnchor.MiddleCenter);
             Stretch(label.rectTransform, 3);
             label.raycastTarget = false;
             localizedLabels.Add((label, stringId));
@@ -283,9 +309,7 @@ namespace ExcelHell.Prototype
 
         public void BeginSelection(int row, int column)
         {
-            if (finished)
-                return;
-
+            if (finished) return;
             if (awaitingSumTarget)
             {
                 CommitSum(row, column);
@@ -300,14 +324,10 @@ namespace ExcelHell.Prototype
 
         public void HoverSelection(int row, int column)
         {
-            if (selecting)
-                UpdateSelection(row, column);
+            if (selecting) UpdateSelection(row, column);
         }
 
-        public void EndSelection()
-        {
-            selecting = false;
-        }
+        public void EndSelection() => selecting = false;
 
         private void UpdateSelection(int endRow, int endColumn)
         {
@@ -326,9 +346,7 @@ namespace ExcelHell.Prototype
 
         private void OnSort()
         {
-            if (!CanAct())
-                return;
-
+            if (!CanAct()) return;
             if (selection.Count != 1 || selection[0].Occupant == null ||
                 (selection[0].Occupant.Kind != ContentKind.RecordKey && selection[0].Occupant.Kind != ContentKind.FieldKey))
             {
@@ -344,7 +362,7 @@ namespace ExcelHell.Prototype
             }
 
             ExecuteSort(plan);
-            var keyName = DisplayToken(plan.KeyCell.Occupant, false);
+            var keyName = DisplayToken(plan.KeyCell.Occupant, true);
             var fallback = plan.UsesFallbackDirection ? loc.Get("ui.sortFallback") : string.Empty;
             selection.Clear();
             CompletePlayerAction(loc.Format("ui.sortDone", plan.Tokens.Count, keyName, fallback));
@@ -360,38 +378,30 @@ namespace ExcelHell.Prototype
 
             if (key.Kind == ContentKind.RecordKey)
             {
-                tokens = AllDataTokens()
-                    .Where(t => t.RecordId == key.RecordId)
-                    .OrderBy(t => schema.FieldOrder(t.FieldId))
-                    .ToList();
-                primary = (0, 1);   // right
-                fallback = (0, -1); // left
+                tokens = AllDataTokens().Where(t => t.RecordId == key.RecordId)
+                    .OrderBy(t => schema.FieldOrder(t.FieldId)).ToList();
+                primary = (0, 1);
+                fallback = (0, -1);
             }
             else
             {
-                tokens = AllDataTokens()
-                    .Where(t => t.FieldId == key.FieldId)
-                    .OrderBy(t => schema.RecordOrder(t.RecordId))
-                    .ToList();
-                primary = (1, 0);   // down
-                fallback = (-1, 0); // up
+                tokens = AllDataTokens().Where(t => t.FieldId == key.FieldId)
+                    .OrderBy(t => schema.RecordOrder(t.RecordId)).ToList();
+                primary = (1, 0);
+                fallback = (-1, 0);
             }
 
-            if (tokens.Count == 0)
-                return false;
-
+            if (tokens.Count == 0) return false;
             if (TryDestinations(keyCell, tokens, primary.dr, primary.dc, out var destinations))
             {
                 plan = new SortPlan(keyCell, tokens, destinations, false);
                 return true;
             }
-
             if (TryDestinations(keyCell, tokens, fallback.dr, fallback.dc, out destinations))
             {
                 plan = new SortPlan(keyCell, tokens, destinations, true);
                 return true;
             }
-
             return false;
         }
 
@@ -399,23 +409,16 @@ namespace ExcelHell.Prototype
         {
             destinations = new List<CellModel>();
             var movingIds = movingTokens.Select(t => t.Id).ToHashSet();
-
             for (var i = 1; i <= movingTokens.Count; i++)
             {
                 var row = keyCell.Row + dr * i;
                 var column = keyCell.Column + dc * i;
-                if (row < 0 || row >= Rows || column < 0 || column >= Columns)
-                    return false;
-
+                if (row < 0 || row >= rows || column < 0 || column >= columns) return false;
                 var cell = cells[row, column];
-                if (cell.State != CellState.Normal)
-                    return false;
-                if (cell.Occupant != null && !movingIds.Contains(cell.Occupant.Id))
-                    return false;
-
+                if (cell.State != CellState.Normal) return false;
+                if (cell.Occupant != null && !movingIds.Contains(cell.Occupant.Id)) return false;
                 destinations.Add(cell);
             }
-
             return true;
         }
 
@@ -423,50 +426,28 @@ namespace ExcelHell.Prototype
         {
             var movingIds = plan.Tokens.Select(t => t.Id).ToHashSet();
             foreach (var cell in cells)
-            {
                 if (cell.Occupant != null && movingIds.Contains(cell.Occupant.Id))
                     cell.Occupant = null;
-            }
 
             for (var i = 0; i < plan.Tokens.Count; i++)
-            {
-                var token = plan.Tokens[i];
-                if (plan.KeyCell.Occupant.Kind == ContentKind.RecordKey)
-                {
-                    token.ContextHint = ContextHintKind.Field;
-                    token.ContextId = token.FieldId;
-                }
-                else
-                {
-                    token.ContextHint = ContextHintKind.Record;
-                    token.ContextId = token.RecordId;
-                }
-                plan.Destinations[i].Occupant = token;
-            }
+                plan.Destinations[i].Occupant = plan.Tokens[i];
         }
 
         private IEnumerable<ContentToken> AllDataTokens()
         {
             foreach (var cell in cells)
-            {
-                if (cell.Occupant != null && cell.Occupant.Kind == ContentKind.Data)
+                if (cell.State == CellState.Normal && cell.Occupant?.Kind == ContentKind.Data)
                     yield return cell.Occupant;
-            }
-            if (clipboard != null && clipboard.Kind == ContentKind.Data)
-                yield return clipboard;
         }
 
         private void OnSum()
         {
-            if (!CanAct())
-                return;
-
+            if (!CanAct()) return;
             if (selection.Count == 0)
             {
                 SetStatus("ui.sumNeedRange");
                 return;
             }
-
             if (selection.Any(cell => cell.State != CellState.Normal || cell.Occupant == null || !cell.Occupant.IsNumeric ||
                                       (cell.Occupant.Kind != ContentKind.Data && cell.Occupant.Kind != ContentKind.Aggregate)))
             {
@@ -477,7 +458,7 @@ namespace ExcelHell.Prototype
             pendingSumSources = selection.ToList();
             pendingSum = pendingSumSources.Sum(cell => cell.Occupant.Number.Value);
             awaitingSumTarget = true;
-            SetStatus(loc.Format("ui.sumTarget", FormatNumber(pendingSum)));
+            statusText.text = loc.Format("ui.sumTarget", FormatNumber(pendingSum));
         }
 
         private void CommitSum(int row, int column)
@@ -490,9 +471,7 @@ namespace ExcelHell.Prototype
             }
 
             var count = pendingSumSources.Count;
-            foreach (var source in pendingSumSources)
-                source.Occupant = null;
-
+            foreach (var source in pendingSumSources) source.Occupant = null;
             target.Occupant = ContentToken.Aggregate($"aggregate.{++aggregateCounter}", pendingSum);
             awaitingSumTarget = false;
             pendingSumSources = null;
@@ -502,19 +481,14 @@ namespace ExcelHell.Prototype
 
         private void OnCut()
         {
-            if (!CanAct() || selection.Count != 1)
-            {
-                if (CanAct()) SetStatus("ui.cutNeed");
-                return;
-            }
-
-            var cell = selection[0];
-            if (cell.State != CellState.Normal || cell.Occupant == null)
+            if (!CanAct()) return;
+            if (selection.Count != 1 || selection[0].State != CellState.Normal || selection[0].Occupant == null)
             {
                 SetStatus("ui.cutNeed");
                 return;
             }
 
+            var cell = selection[0];
             clipboard = cell.Occupant;
             cell.Occupant = null;
             selection.Clear();
@@ -523,8 +497,7 @@ namespace ExcelHell.Prototype
 
         private void OnPaste()
         {
-            if (!CanAct())
-                return;
+            if (!CanAct()) return;
             if (clipboard == null)
             {
                 SetStatus("ui.pasteEmpty");
@@ -545,8 +518,7 @@ namespace ExcelHell.Prototype
 
         private void OnDelete()
         {
-            if (!CanAct())
-                return;
+            if (!CanAct()) return;
             if (selection.Count != 1)
             {
                 SetStatus("ui.deleteNeed");
@@ -554,11 +526,12 @@ namespace ExcelHell.Prototype
             }
 
             var cell = selection[0];
+            var quarantinedRef = cell.State == CellState.Corrupted;
             cell.Occupant = null;
             cell.State = CellState.Destroyed;
             cell.CorruptionAge = 0;
             selection.Clear();
-            CompletePlayerAction(loc.Format("ui.deleteDone", cell.Address));
+            CompletePlayerAction(loc.Format(quarantinedRef ? "ui.quarantineDone" : "ui.deleteDone", cell.Address));
         }
 
         private bool CanAct()
@@ -581,7 +554,7 @@ namespace ExcelHell.Prototype
             turn++;
             ResolveAnomaly();
 
-            if (!finished && turn >= MaxTurns)
+            if (!finished && turn >= config.SafeMaxTurns)
             {
                 finished = true;
                 statusText.text = loc.Get("ui.deadline");
@@ -590,18 +563,16 @@ namespace ExcelHell.Prototype
             {
                 statusText.text = localizedMessage;
             }
-
             RefreshAll();
         }
 
         private void ResolveAnomaly()
         {
-            if (turn < AnomalyActivationTurn)
-                return;
+            if (turn < config.SafeActivationTurn) return;
 
             if (!cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted))
             {
-                var spawn = cells[9, 0]; // A10: empty edge, then paths toward semantic data.
+                var spawn = cells[GetSpawnRow(), GetSpawnColumn()];
                 if (spawn.State == CellState.Normal)
                 {
                     spawn.State = CellState.Corrupted;
@@ -623,19 +594,17 @@ namespace ExcelHell.Prototype
 
             foreach (var cell in cells)
             {
-                if (cell.State != CellState.Corrupted)
-                    continue;
+                if (cell.State != CellState.Corrupted) continue;
                 if (executedIntent.HasValue && cell.Row == executedIntent.Value.TargetRow && cell.Column == executedIntent.Value.TargetColumn)
                     continue;
 
                 cell.CorruptionAge++;
-                if (cell.CorruptionAge >= 2)
+                if (cell.CorruptionAge >= config.SafeCorruptionLifetime)
                 {
                     cell.State = CellState.Destroyed;
                     cell.Occupant = null;
                 }
             }
-
             GenerateIntent();
         }
 
@@ -663,10 +632,7 @@ namespace ExcelHell.Prototype
                     .ThenBy(cell => cell.Row)
                     .ThenBy(cell => cell.Column)
                     .ToList();
-
-                if (candidates.Count == 0)
-                    continue;
-
+                if (candidates.Count == 0) continue;
                 var target = candidates[0];
                 currentIntent = new AnomalyIntent(source.Row, source.Column, target.Row, target.Column);
                 return;
@@ -680,7 +646,7 @@ namespace ExcelHell.Prototype
             {
                 var row = cell.Row + dr;
                 var column = cell.Column + dc;
-                if (row >= 0 && row < Rows && column >= 0 && column < Columns)
+                if (row >= 0 && row < rows && column >= 0 && column < columns)
                     yield return cells[row, column];
             }
         }
@@ -690,17 +656,13 @@ namespace ExcelHell.Prototype
             var required = cells.Cast<CellModel>()
                 .Where(cell => cell.State != CellState.Destroyed && cell.Occupant?.IsRequiredSource == true)
                 .ToList();
-            if (required.Count == 0)
-                return int.MaxValue;
-
+            if (required.Count == 0) return int.MaxValue;
             return required.Min(cell => Mathf.Abs(cell.Row - candidate.Row) + Mathf.Abs(cell.Column - candidate.Column));
         }
 
         private void OnSubmit()
         {
-            if (finished)
-                return;
-
+            if (finished) return;
             var wrong = new List<string>();
             foreach (var goal in goals)
             {
@@ -712,7 +674,7 @@ namespace ExcelHell.Prototype
             if (wrong.Count == 0)
             {
                 finished = true;
-                statusText.text = loc.Format("ui.accepted", turn, MaxTurns);
+                statusText.text = loc.Format("ui.accepted", turn, config.SafeMaxTurns);
             }
             else
             {
@@ -730,28 +692,26 @@ namespace ExcelHell.Prototype
         private void ResetPrototype()
         {
             Destroy(gameObject);
-            var replacement = new GameObject("EXEL HELL Prototype");
-            replacement.AddComponent<ExcelHellPrototype>();
+            new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
         }
 
         private void RefreshAll()
         {
-            for (var row = 0; row < Rows; row++)
-            for (var column = 0; column < Columns; column++)
+            for (var row = 0; row < rows; row++)
+            for (var column = 0; column < columns; column++)
                 views[row, column]?.Refresh(cells[row, column], selection.Contains(cells[row, column]), IsIntentTarget(row, column), DisplayToken);
 
             titleText.text = loc.Get("ui.title");
             headingText.text = loc.Get("ui.reportTask");
             helpText.text = loc.Get("ui.help");
-            foreach (var (text, stringId) in localizedLabels)
-                text.text = loc.Get(stringId);
+            foreach (var (text, stringId) in localizedLabels) text.text = loc.Get(stringId);
 
-            turnText.text = loc.Format("ui.turn", turn, MaxTurns);
+            turnText.text = loc.Format("ui.turn", turn, config.SafeMaxTurns);
             var clipboardValue = clipboard == null ? loc.Get("ui.empty") : DisplayToken(clipboard, true);
             clipboardTextUi.text = loc.Format("ui.clipboard", clipboardValue);
 
-            if (turn < AnomalyActivationTurn)
-                intentText.text = loc.Format("ui.refDormant", AnomalyActivationTurn);
+            if (turn < config.SafeActivationTurn)
+                intentText.text = loc.Format("ui.refDormant", config.SafeActivationTurn);
             else if (currentIntent.HasValue)
                 intentText.text = loc.Format("ui.refNext", cells[currentIntent.Value.TargetRow, currentIntent.Value.TargetColumn].Address);
             else
@@ -761,7 +721,8 @@ namespace ExcelHell.Prototype
             {
                 var target = cells[goal.TargetRow, goal.TargetColumn];
                 var current = target.Occupant?.Number.HasValue == true ? FormatNumber(target.Occupant.Number.Value) : loc.Get("ui.empty");
-                return loc.Format("ui.goal", loc.Get(goal.NameStringId), current, target.Address);
+                var expected = config.showExpectedAnswers ? FormatNumber(goal.Expected) : "?";
+                return loc.Format("ui.goal", loc.Get(goal.NameStringId), current, expected, target.Address);
             }));
         }
 
@@ -772,32 +733,31 @@ namespace ExcelHell.Prototype
 
         private string DisplayToken(ContentToken token, bool compact)
         {
-            if (token == null)
-                return string.Empty;
-
+            if (token == null) return string.Empty;
             if (token.Kind == ContentKind.RecordKey || token.Kind == ContentKind.FieldKey || token.Kind == ContentKind.Label)
                 return loc.Get(token.StringId);
-
-            var value = token.Number.HasValue ? FormatNumber(token.Number.Value) : string.Empty;
-            if (compact || token.ContextHint == ContextHintKind.None)
-                return value;
-
-            var context = token.ContextHint == ContextHintKind.Record
-                ? loc.Get($"record.{token.ContextId}")
-                : loc.Get($"field.{token.ContextId}");
-            return value + "\n" + context;
+            return token.Number.HasValue ? FormatNumber(token.Number.Value) : string.Empty;
         }
 
         private void SetStatus(string stringId)
         {
-            if (statusText != null)
-                statusText.text = loc.Get(stringId);
+            if (statusText != null) statusText.text = loc.Get(stringId);
         }
 
-        public static string ColumnName(int zeroBasedColumn) => ((char)('A' + zeroBasedColumn)).ToString();
+        public static string ColumnName(int zeroBasedColumn)
+        {
+            var value = zeroBasedColumn + 1;
+            var result = string.Empty;
+            while (value > 0)
+            {
+                value--;
+                result = (char)('A' + value % 26) + result;
+                value /= 26;
+            }
+            return result;
+        }
 
         private static string FormatNumber(double value) => Math.Abs(value % 1) < 0.001 ? value.ToString("0") : value.ToString("0.##");
-
         private static Font BuiltinFont() => Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
         private static Image CreatePanel(Transform parent, string name, Color color)
@@ -887,26 +847,20 @@ namespace ExcelHell.Prototype
 
             label.color = new Color(0.12f, 0.13f, 0.15f, 1f);
             label.fontStyle = model.Occupant?.Kind == ContentKind.RecordKey || model.Occupant?.Kind == ContentKind.FieldKey
-                ? FontStyle.Bold
-                : FontStyle.Normal;
+                ? FontStyle.Bold : FontStyle.Normal;
             label.text = displayToken(model.Occupant, false);
         }
 
         public void OnPointerDown(PointerEventData eventData)
         {
-            if (eventData.button == PointerEventData.InputButton.Left)
-                prototype.BeginSelection(row, column);
+            if (eventData.button == PointerEventData.InputButton.Left) prototype.BeginSelection(row, column);
         }
 
-        public void OnPointerEnter(PointerEventData eventData)
-        {
-            prototype.HoverSelection(row, column);
-        }
+        public void OnPointerEnter(PointerEventData eventData) => prototype.HoverSelection(row, column);
 
         public void OnPointerUp(PointerEventData eventData)
         {
-            if (eventData.button == PointerEventData.InputButton.Left)
-                prototype.EndSelection();
+            if (eventData.button == PointerEventData.InputButton.Left) prototype.EndSelection();
         }
     }
 }
