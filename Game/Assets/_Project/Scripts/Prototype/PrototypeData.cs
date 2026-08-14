@@ -20,11 +20,11 @@ namespace ExcelHell.Prototype
         Label
     }
 
-    public enum ContextHintKind
+    public enum ReportGoalValidation
     {
-        None,
-        Record,
-        Field
+        NumericValue,
+        ExactProvenance,
+        DirectToken
     }
 
     [Serializable]
@@ -37,8 +37,7 @@ namespace ExcelHell.Prototype
         public string FieldId;
         public double? Number;
         public bool IsRequiredSource;
-        public ContextHintKind ContextHint;
-        public string ContextId;
+        public List<string> SourceTokenIds = new();
 
         public bool IsNumeric => Number.HasValue;
 
@@ -51,7 +50,8 @@ namespace ExcelHell.Prototype
                 RecordId = recordId,
                 FieldId = fieldId,
                 Number = value,
-                IsRequiredSource = required
+                IsRequiredSource = required,
+                SourceTokenIds = new List<string> { id }
             };
         }
 
@@ -87,13 +87,14 @@ namespace ExcelHell.Prototype
             };
         }
 
-        public static ContentToken Aggregate(string id, double value)
+        public static ContentToken Aggregate(string id, double value, IEnumerable<string> sourceTokenIds)
         {
             return new ContentToken
             {
                 Id = id,
                 Kind = ContentKind.Aggregate,
-                Number = value
+                Number = value,
+                SourceTokenIds = sourceTokenIds.Distinct().OrderBy(x => x).ToList()
             };
         }
     }
@@ -145,13 +146,44 @@ namespace ExcelHell.Prototype
         public readonly double Expected;
         public readonly int TargetRow;
         public readonly int TargetColumn;
+        public readonly ReportGoalValidation Validation;
+        public readonly HashSet<string> ExpectedSourceIds;
+        public readonly string ExpectedDirectTokenId;
 
-        public ReportGoal(string nameStringId, double expected, int targetRow, int targetColumn)
+        public ReportGoal(
+            string nameStringId,
+            double expected,
+            int targetRow,
+            int targetColumn,
+            ReportGoalValidation validation = ReportGoalValidation.NumericValue,
+            IEnumerable<string> expectedSourceIds = null,
+            string expectedDirectTokenId = null)
         {
             NameStringId = nameStringId;
             Expected = expected;
             TargetRow = targetRow;
             TargetColumn = targetColumn;
+            Validation = validation;
+            ExpectedSourceIds = expectedSourceIds == null ? new HashSet<string>() : new HashSet<string>(expectedSourceIds);
+            ExpectedDirectTokenId = expectedDirectTokenId;
+        }
+
+        public bool IsSatisfiedBy(ContentToken token)
+        {
+            if (token?.Number == null || Math.Abs(token.Number.Value - Expected) > 0.001)
+                return false;
+
+            switch (Validation)
+            {
+                case ReportGoalValidation.NumericValue:
+                    return true;
+                case ReportGoalValidation.ExactProvenance:
+                    return token.SourceTokenIds != null && ExpectedSourceIds.SetEquals(token.SourceTokenIds);
+                case ReportGoalValidation.DirectToken:
+                    return token.Id == ExpectedDirectTokenId;
+                default:
+                    return false;
+            }
         }
     }
 
@@ -168,6 +200,20 @@ namespace ExcelHell.Prototype
             SourceColumn = sourceColumn;
             TargetRow = targetRow;
             TargetColumn = targetColumn;
+        }
+    }
+
+    public readonly struct SpawnIntent
+    {
+        public readonly int Row;
+        public readonly int Column;
+        public readonly int TurnsRemaining;
+
+        public SpawnIntent(int row, int column, int turnsRemaining)
+        {
+            Row = row;
+            Column = column;
+            TurnsRemaining = turnsRemaining;
         }
     }
 
