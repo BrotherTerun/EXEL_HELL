@@ -155,8 +155,8 @@ namespace ExcelHell.Prototype
         {
             unchecked
             {
-                uint x = (uint)((int)config.reportGoals * 2654435761u);
-                x ^= (uint)((localSpawnSequence + 1) * 2246822519u);
+                uint x = (uint)(int)config.reportGoals * 2654435761u;
+                x ^= (uint)(localSpawnSequence + 1) * 2246822519u;
                 x ^= x >> 15;
                 x *= 3266489917u;
                 x ^= x >> 16;
@@ -168,12 +168,12 @@ namespace ExcelHell.Prototype
         {
             unchecked
             {
-                uint x = (uint)((int)config.reportGoals * 73856093);
-                x ^= (uint)((row + 1) * 19349663);
-                x ^= (uint)((column + 1) * 83492791);
-                x ^= (uint)((localSpawnSequence + 1) * 2654435761u);
+                uint x = (uint)(int)config.reportGoals * 73856093u;
+                x ^= (uint)(row + 1) * 19349663u;
+                x ^= (uint)(column + 1) * 83492791u;
+                x ^= (uint)(localSpawnSequence + 1) * 2654435761u;
                 x ^= x >> 13;
-                return (int)(x & 0x7fffffff);
+                return (int)(x & 0x7fffffffu);
             }
         }
 
