@@ -223,7 +223,7 @@ namespace ExcelHell.Prototype
         {
             result = null;
 
-            // MVP 0.4: only live report-critical data are primary anchors. Empty report targets no longer bias spawn.
+            // Only live report-critical data are primary anchors. Empty report targets do not bias spawn.
             var anchors = cells.Cast<CellModel>()
                 .Where(cell => cell.State != CellState.Destroyed && cell.Occupant?.IsRequiredSource == true)
                 .ToList();
@@ -502,12 +502,14 @@ namespace ExcelHell.Prototype
             if (key.Kind == ContentKind.RecordKey)
             {
                 tokens = AllDataTokens().Where(t => t.RecordId == key.RecordId).OrderBy(t => schema.FieldOrder(t.FieldId)).ToList();
-                primary = (0, 1); fallback = (0, -1);
+                primary = (0, 1);
+                fallback = (0, -1);
             }
             else
             {
                 tokens = AllDataTokens().Where(t => t.FieldId == key.FieldId).OrderBy(t => schema.RecordOrder(t.RecordId)).ToList();
-                primary = (1, 0); fallback = (-1, 0);
+                primary = (1, 0);
+                fallback = (-1, 0);
             }
 
             if (tokens.Count == 0) return false;
@@ -590,7 +592,7 @@ namespace ExcelHell.Prototype
             var required = pendingSumSources.Any(source => source.Occupant.IsRequiredSource);
             var reportTarget = IsReportTarget(row, column);
 
-            // MVP 0.4 compromise: SUM is destructive in worksheet space, but writing a report answer is a non-consuming calculation.
+            // SUM is destructive in worksheet space, but writing a report answer is a non-consuming calculation.
             if (!reportTarget)
                 foreach (var source in pendingSumSources) source.Occupant = null;
 
@@ -606,7 +608,8 @@ namespace ExcelHell.Prototype
             if (!CanAct()) return;
             if (selection.Count != 1 || selection[0].State != CellState.Normal || selection[0].Occupant == null)
             {
-                SetStatus("ui.cutNeed"); return;
+                SetStatus("ui.cutNeed");
+                return;
             }
             var cell = selection[0];
             clipboard = cell.Occupant;
@@ -618,10 +621,15 @@ namespace ExcelHell.Prototype
         private void OnPaste()
         {
             if (!CanAct()) return;
-            if (clipboard == null) { SetStatus("ui.pasteEmpty"); return; }
+            if (clipboard == null)
+            {
+                SetStatus("ui.pasteEmpty");
+                return;
+            }
             if (selection.Count != 1 || selection[0].State != CellState.Normal || selection[0].Occupant != null)
             {
-                SetStatus("ui.pasteTarget"); return;
+                SetStatus("ui.pasteTarget");
+                return;
             }
             var cell = selection[0];
             cell.Occupant = clipboard;
@@ -633,7 +641,11 @@ namespace ExcelHell.Prototype
         private void OnDelete()
         {
             if (!CanAct()) return;
-            if (selection.Count != 1) { SetStatus("ui.deleteNeed"); return; }
+            if (selection.Count != 1)
+            {
+                SetStatus("ui.deleteNeed");
+                return;
+            }
             var cell = selection[0];
             var quarantinedRef = cell.State == CellState.Corrupted;
             cell.Occupant = null;
@@ -645,8 +657,16 @@ namespace ExcelHell.Prototype
 
         private bool CanAct()
         {
-            if (finished) { SetStatus("ui.finished"); return false; }
-            if (awaitingSumTarget) { SetStatus("ui.finishSum"); return false; }
+            if (finished)
+            {
+                SetStatus("ui.finished");
+                return false;
+            }
+            if (awaitingSumTarget)
+            {
+                SetStatus("ui.finishSum");
+                return false;
+            }
             return true;
         }
 
@@ -699,7 +719,8 @@ namespace ExcelHell.Prototype
             }
 
             var hasActiveRef = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
-            if (hasActiveRef) GenerateIntent(); else currentIntent = null;
+            if (hasActiveRef) GenerateIntent();
+            else currentIntent = null;
 
             if (hadActiveRefBeforeResolve && !hasActiveRef)
             {
@@ -762,13 +783,18 @@ namespace ExcelHell.Prototype
         private void OnSubmit()
         {
             if (finished) return;
-            if (goals.Count == 0) { SetStatus("ui.noGoals"); return; }
+            if (goals.Count == 0)
+            {
+                SetStatus("ui.noGoals");
+                return;
+            }
 
             var wrong = new List<string>();
             foreach (var goal in goals)
             {
-                var token = cells[goal.TargetRow, goal.TargetColumn].Occupant;
-                if (!goal.IsSatisfiedBy(token)) wrong.Add(loc.Get(goal.NameStringId));
+                var target = cells[goal.TargetRow, goal.TargetColumn];
+                if (target.State != CellState.Normal || !goal.IsSatisfiedBy(target.Occupant))
+                    wrong.Add(loc.Get(goal.NameStringId));
             }
 
             if (wrong.Count == 0)
@@ -822,7 +848,9 @@ namespace ExcelHell.Prototype
                 goalsText.text = string.Join("\n", goals.Select(goal =>
                 {
                     var target = cells[goal.TargetRow, goal.TargetColumn];
-                    var current = target.Occupant?.Number.HasValue == true ? FormatNumber(target.Occupant.Number.Value) : loc.Get("ui.empty");
+                    var current = target.State == CellState.Normal && target.Occupant?.Number.HasValue == true
+                        ? FormatNumber(target.Occupant.Number.Value)
+                        : loc.Get("ui.empty");
                     var expected = config.showExpectedAnswers ? FormatNumber(goal.Expected) : "?";
                     return loc.Format("ui.goal", loc.Get(goal.NameStringId), current, expected, target.Address);
                 }));
@@ -833,14 +861,20 @@ namespace ExcelHell.Prototype
 
         private bool IsIntentTarget(int row, int column)
         {
-            if (pendingSpawnIntent.HasValue && pendingSpawnIntent.Value.Row == row && pendingSpawnIntent.Value.Column == column) return true;
-            return currentIntent.HasValue && currentIntent.Value.TargetRow == row && currentIntent.Value.TargetColumn == column;
+            // While a future outbreak is telegraphed, display only that spawn warning.
+            // The sidebar also prioritizes SpawnIntent, so this keeps the board and text in sync.
+            if (pendingSpawnIntent.HasValue)
+                return pendingSpawnIntent.Value.Row == row && pendingSpawnIntent.Value.Column == column;
+
+            return currentIntent.HasValue &&
+                   currentIntent.Value.TargetRow == row && currentIntent.Value.TargetColumn == column;
         }
 
         private string DisplayToken(ContentToken token, bool compact)
         {
             if (token == null) return string.Empty;
-            if (token.Kind == ContentKind.RecordKey || token.Kind == ContentKind.FieldKey || token.Kind == ContentKind.Label) return loc.Get(token.StringId);
+            if (token.Kind == ContentKind.RecordKey || token.Kind == ContentKind.FieldKey || token.Kind == ContentKind.Label)
+                return loc.Get(token.StringId);
             return token.Number.HasValue ? FormatNumber(token.Number.Value) : string.Empty;
         }
 
@@ -951,10 +985,11 @@ namespace ExcelHell.Prototype
                 return;
             }
 
-            background.color = selected
-                ? new Color(0.65f, 0.84f, 1f, 1f)
-                : intentTarget
-                    ? new Color(1f, 0.73f, 0.34f, 1f)
+            // Intent fill is stable. Selection is represented by the blue outline and must not hide/move the orange telegraph.
+            background.color = intentTarget
+                ? new Color(1f, 0.73f, 0.34f, 1f)
+                : selected
+                    ? new Color(0.65f, 0.84f, 1f, 1f)
                     : reportTarget
                         ? new Color(0.88f, 0.96f, 0.89f, 1f)
                         : model.Occupant?.Kind == ContentKind.RecordKey || model.Occupant?.Kind == ContentKind.FieldKey
@@ -971,7 +1006,9 @@ namespace ExcelHell.Prototype
         {
             if (eventData.button == PointerEventData.InputButton.Left) prototype.BeginSelection(row, column);
         }
+
         public void OnPointerEnter(PointerEventData eventData) => prototype.HoverSelection(row, column);
+
         public void OnPointerUp(PointerEventData eventData)
         {
             if (eventData.button == PointerEventData.InputButton.Left) prototype.EndSelection();
