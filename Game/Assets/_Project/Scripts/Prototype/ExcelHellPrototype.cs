@@ -487,32 +487,40 @@ namespace ExcelHell.Prototype
             ExecuteSort(plan);
             var keyName = DisplayToken(plan.KeyCell.Occupant, true);
             var fallback = plan.UsesFallbackDirection ? loc.Get("ui.sortFallback") : string.Empty;
+            var movedCount = plan.Tokens.Count(token => token != null);
             selection.Clear();
-            CompletePlayerAction(loc.Format("ui.sortDone", plan.Tokens.Count, keyName, fallback));
+            CompletePlayerAction(loc.Format("ui.sortDone", movedCount, keyName, fallback));
         }
 
         private bool TryBuildSortPlan(CellModel keyCell, out SortPlan plan)
         {
             plan = null;
             var key = keyCell.Occupant;
+            var data = AllDataTokens().ToList();
             List<ContentToken> tokens;
             (int dr, int dc) primary;
             (int dr, int dc) fallback;
 
             if (key.Kind == ContentKind.RecordKey)
             {
-                tokens = AllDataTokens().Where(t => t.RecordId == key.RecordId).OrderBy(t => schema.FieldOrder(t.FieldId)).ToList();
+                // A record always owns the complete field schema. Missing values remain empty semantic slots.
+                tokens = schema.Fields
+                    .Select(fieldId => data.FirstOrDefault(t => t.RecordId == key.RecordId && t.FieldId == fieldId))
+                    .ToList();
                 primary = (0, 1);
                 fallback = (0, -1);
             }
             else
             {
-                tokens = AllDataTokens().Where(t => t.FieldId == key.FieldId).OrderBy(t => schema.RecordOrder(t.RecordId)).ToList();
+                // A field always owns one slot per record. CUT/DELETE/#REF!/consumption must not collapse identity.
+                tokens = schema.Records
+                    .Select(recordId => data.FirstOrDefault(t => t.FieldId == key.FieldId && t.RecordId == recordId))
+                    .ToList();
                 primary = (1, 0);
                 fallback = (-1, 0);
             }
 
-            if (tokens.Count == 0) return false;
+            if (tokens.All(token => token == null)) return false;
             if (TryDestinations(keyCell, tokens, primary.dr, primary.dc, out var destinations))
             {
                 plan = new SortPlan(keyCell, tokens, destinations, false);
@@ -529,7 +537,12 @@ namespace ExcelHell.Prototype
         private bool TryDestinations(CellModel keyCell, List<ContentToken> movingTokens, int dr, int dc, out List<CellModel> destinations)
         {
             destinations = new List<CellModel>();
-            var movingIds = movingTokens.Select(t => t.Id).ToHashSet();
+            var movingIds = movingTokens
+                .Where(token => token != null)
+                .Select(token => token.Id)
+                .ToHashSet();
+
+            // Destination span follows the full semantic schema, not just surviving physical tokens.
             for (var i = 1; i <= movingTokens.Count; i++)
             {
                 var row = keyCell.Row + dr * i;
@@ -545,10 +558,17 @@ namespace ExcelHell.Prototype
 
         private void ExecuteSort(SortPlan plan)
         {
-            var movingIds = plan.Tokens.Select(t => t.Id).ToHashSet();
+            var movingIds = plan.Tokens
+                .Where(token => token != null)
+                .Select(token => token.Id)
+                .ToHashSet();
+
             foreach (var cell in cells)
                 if (cell.Occupant != null && movingIds.Contains(cell.Occupant.Id)) cell.Occupant = null;
-            for (var i = 0; i < plan.Tokens.Count; i++) plan.Destinations[i].Occupant = plan.Tokens[i];
+
+            for (var i = 0; i < plan.Tokens.Count; i++)
+                if (plan.Tokens[i] != null)
+                    plan.Destinations[i].Occupant = plan.Tokens[i];
         }
 
         private IEnumerable<ContentToken> AllDataTokens()
@@ -862,7 +882,7 @@ namespace ExcelHell.Prototype
         private bool IsIntentTarget(int row, int column)
         {
             // While a future outbreak is telegraphed, display only that spawn warning.
-            // The sidebar also prioritizes SpawnIntent, so this keeps the board and text in sync.
+            // The active movement intent is rendered by PrototypeMovementIntentOverlay.
             if (pendingSpawnIntent.HasValue)
                 return pendingSpawnIntent.Value.Row == row && pendingSpawnIntent.Value.Column == column;
 
