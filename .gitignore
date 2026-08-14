@@ -1,0 +1,79 @@
+# ============================================================
+# UNITY — generated/local data
+# ============================================================
+
+/Game/[Ll]ibrary/
+/Game/[Tt]emp/
+/Game/[Oo]bj/
+/Game/[Bb]uild/
+/Game/[Bb]uilds/
+/Game/[Ll]ogs/
+/Game/[Uu]ser[Ss]ettings/
+/Game/[Mm]emoryCaptures/
+/Game/[Rr]ecordings/
+/Game/.utmp/
+
+# Unity / IDE generated files
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.DotSettings.user
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+
+/Game/Assets/Plugins/Editor/JetBrains*
+
+# Unity crash / generated data
+sysinfo.txt
+mono_crash.*
+
+# Packages downloaded for importing.
+# Commit imported assets actually used by the game instead.
+*.unitypackage
+*.unitypackage.meta
+
+# Builds
+*.apk
+*.aab
+*.app
+
+# ============================================================
+# OBSIDIAN — local/editor state
+# ============================================================
+
+**/.obsidian/
+**/.trash/
+
+# ============================================================
+# OS / temporary junk
+# ============================================================
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.bak
+*.swp
+*.log
+
+# ============================================================
+# LOCAL DOWNLOAD / SCRATCH DIRECTORIES
+# ============================================================
+
+/Downloads/
+/Scratch/
+/Temp/
