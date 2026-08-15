@@ -22,8 +22,23 @@ namespace ExcelHell.Prototype
         [Min(8)] public int rows = 8;
         [Min(8)] public int columns = 8;
 
-        [Header("Turn model")]
+        [Header("Realtime experiment")]
+        [Tooltip("Real seconds available for the whole level. 300 seconds = 5 minutes.")]
+        [Min(30f)] public float levelDurationSeconds = 300f;
+        [Tooltip("Real seconds between telegraphed #REF! movement resolutions. Old 15-turn pacing scaled to a 5-minute level gives ~20 seconds per former turn.")]
+        [Min(1f)] public float anomalyStepSeconds = 20f;
+        [Tooltip("Real seconds before the first outbreak becomes active.")]
+        [Min(1f)] public float firstOutbreakDelaySeconds = 60f;
+        [Tooltip("Real seconds before a new outbreak after every live #REF! disappears.")]
+        [Min(1f)] public float respawnDelaySeconds = 40f;
+        [Tooltip("Real seconds before a parallel outbreak while another #REF! is active.")]
+        [Min(1f)] public float outbreakDelayWhileActiveSeconds = 60f;
+
+        [Header("Legacy turn values (ignored by realtime branch)")]
         [Min(1)] public int maxTurns = 15;
+        [Min(0)] public int anomalyActivationTurn = 3;
+        [Min(1)] public int respawnDelayTurns = 2;
+        [Min(1)] public int outbreakDelayWhileActiveTurns = 3;
 
         [Header("Report goals")]
         [Tooltip("Select any combination before entering Play Mode.")]
@@ -32,13 +47,8 @@ namespace ExcelHell.Prototype
             PrototypeReportGoals.BonusAtLeastFour |
             PrototypeReportGoals.SalaryOfMaxOvertime;
 
-        [Header("#REF! outbreaks")]
-        [Tooltip("Turns before the first telegraphed outbreak becomes active.")]
-        [Min(0)] public int anomalyActivationTurn = 3;
-        [Tooltip("If every active #REF! is quarantined/dies, a new outbreak is scheduled this many turns later.")]
-        [Min(1)] public int respawnDelayTurns = 2;
-        [Tooltip("A fresh outbreak is also scheduled after this many turns while other #REF! cells are still active.")]
-        [Min(1)] public int outbreakDelayWhileActiveTurns = 3;
+        [Header("#REF! lifecycle")]
+        [Tooltip("How many realtime anomaly movement resolutions a Corrupted cell survives before becoming Destroyed.")]
         [Min(1)] public int corruptionTurnsBeforeDestroy = 2;
 
         [Header("Dynamic #REF! spawn")]
@@ -56,10 +66,11 @@ namespace ExcelHell.Prototype
 
         public int SafeRows => Mathf.Max(8, rows);
         public int SafeColumns => Mathf.Max(8, columns);
-        public int SafeMaxTurns => Mathf.Max(1, maxTurns);
-        public int SafeActivationTurn => Mathf.Max(0, anomalyActivationTurn);
-        public int SafeRespawnDelay => Mathf.Max(1, respawnDelayTurns);
-        public int SafeActiveOutbreakDelay => Mathf.Max(1, outbreakDelayWhileActiveTurns);
+        public float SafeLevelDurationSeconds => levelDurationSeconds > 0f ? levelDurationSeconds : 300f;
+        public float SafeAnomalyStepSeconds => anomalyStepSeconds > 0f ? anomalyStepSeconds : 20f;
+        public float SafeFirstOutbreakDelaySeconds => firstOutbreakDelaySeconds > 0f ? firstOutbreakDelaySeconds : 60f;
+        public float SafeRespawnDelaySeconds => respawnDelaySeconds > 0f ? respawnDelaySeconds : 40f;
+        public float SafeActiveOutbreakDelaySeconds => outbreakDelayWhileActiveSeconds > 0f ? outbreakDelayWhileActiveSeconds : 60f;
         public int SafeCorruptionLifetime => Mathf.Max(1, corruptionTurnsBeforeDestroy);
         public int SafeSpawnPreferredDistance => Mathf.Max(1, spawnPreferredDistance);
         public int SafeSpawnDistanceVariation => Mathf.Max(0, spawnDistanceVariation);
