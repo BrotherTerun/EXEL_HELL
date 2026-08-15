@@ -11,7 +11,7 @@ namespace ExcelHell.Prototype
     /// Formula-cell levels replace the generated board completely; legacy levels can still use
     /// the old dataset-only swap path if needed by another branch.
     /// </summary>
-    [DefaultExecutionOrder(1000)]
+    [DefaultExecutionOrder(600)]
     public sealed class PrototypeLevelDatasetAdapter : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -58,7 +58,6 @@ namespace ExcelHell.Prototype
             var reservedCells = ReservedCellsField?.GetValue(prototype) as HashSet<(int Row, int Column)>;
             if (cells == null || goals == null || requiredForPlay == null || reservedCells == null) return;
 
-            // Remove every occupant/state produced by the legacy BuildModel. Field infrastructure is authored below.
             foreach (var cell in cells)
             {
                 cell.Occupant = null;
@@ -80,6 +79,13 @@ namespace ExcelHell.Prototype
                 if (!string.IsNullOrEmpty(goal.ExpectedDirectTokenId)) requiredForPlay.Add(goal.ExpectedDirectTokenId);
             }
 
+            // Semantic lookup data can be critical even when it is not part of the final arithmetic sum.
+            // Mark it before token construction so anomaly spawn/route planning sees the same dependency graph as the player.
+            if ((level.ReportGoals & PrototypeReportGoals.SalaryForHoursBelowForty) != 0)
+                foreach (var record in Records) requiredForPlay.Add(DataId(record, "hours"));
+            if ((level.ReportGoals & PrototypeReportGoals.SalaryOfMaxOvertime) != 0)
+                foreach (var record in Records) requiredForPlay.Add(DataId(record, "overtime"));
+
             foreach (var placement in level.TokenLayout ?? Array.Empty<PrototypeTokenPlacement>())
             {
                 ValidateCoordinate(cells, placement.Row, placement.Column, level.Id);
@@ -98,7 +104,6 @@ namespace ExcelHell.Prototype
                 PrototypeFormulaCells.AssignFormula(target, placement.Formula);
             }
 
-            // A report target may also be a formula field; verify every goal has exactly that infrastructure.
             foreach (var goal in goals)
             {
                 var target = cells[goal.TargetRow, goal.TargetColumn];
@@ -106,8 +111,8 @@ namespace ExcelHell.Prototype
                     Debug.LogWarning($"EXEL HELL level {level.Id}: report target {target.Address} is not authored as SUM formula.");
             }
 
-            // The prototype scheduled its first outbreak during Awake against the temporary graybox.
-            // Reinitialize now so spawn candidates and critical anchors reflect the authored board.
+            // Must happen before PrototypeRefSpawnCommitment (execution order 700).
+            // Its committed telegraph is therefore based on the authored board, not the temporary legacy graybox.
             InitializeAnomalyMethod?.Invoke(prototype, null);
             RefreshAllMethod?.Invoke(prototype, null);
         }
