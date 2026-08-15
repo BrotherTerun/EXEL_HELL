@@ -35,7 +35,7 @@ namespace ExcelHell.Application
         private const string ProgressFileName = "excel_hell_progress.json";
         private const string SettingsFileName = "excel_hell_settings.json";
 
-        private static string SaveDirectoryPath => Path.Combine(Application.persistentDataPath, SaveDirectoryName);
+        private static string SaveDirectoryPath => Path.Combine(UnityEngine.Application.persistentDataPath, SaveDirectoryName);
         private static string ProgressPath => Path.Combine(SaveDirectoryPath, ProgressFileName);
         private static string SettingsPath => Path.Combine(SaveDirectoryPath, SettingsFileName);
 
