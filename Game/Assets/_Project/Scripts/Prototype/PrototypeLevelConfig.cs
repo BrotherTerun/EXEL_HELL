@@ -5,6 +5,31 @@ using UnityEngine;
 namespace ExcelHell.Prototype
 {
     [Serializable]
+    public sealed class PrototypeLevelDataset
+    {
+        public double[] Hours;
+        public double[] Salary;
+        public double[] Overtime;
+        public double[] Bonus;
+
+        public double Value(string fieldId, int recordIndex)
+        {
+            var source = fieldId switch
+            {
+                "hours" => Hours,
+                "salary" => Salary,
+                "overtime" => Overtime,
+                "bonus" => Bonus,
+                _ => null
+            };
+
+            if (source == null || recordIndex < 0 || recordIndex >= source.Length)
+                throw new ArgumentOutOfRangeException(nameof(recordIndex), $"Dataset has no value for {fieldId}[{recordIndex}].");
+            return source[recordIndex];
+        }
+    }
+
+    [Serializable]
     public sealed class PrototypeLevelConfig
     {
         public string Id;
@@ -14,14 +39,13 @@ namespace ExcelHell.Prototype
         public int Columns = 8;
         public PrototypeReportGoals ReportGoals;
         public bool RefEnabled = true;
+        public PrototypeLevelDataset Dataset;
 
         public int MaxTurns = 15;
         public int FirstOutbreakTurn = 3;
         public int RespawnDelayTurns = 2;
         public int ActiveOutbreakDelayTurns = 3;
 
-        // Realtime defaults are intentionally aggressive enough that a practiced player
-        // still sees the anomaly before finishing the worksheet.
         public float DurationSeconds = 270f;
         public float AnomalyStepSeconds = 10f;
         public float FirstOutbreakDelaySeconds = 30f;
@@ -46,7 +70,14 @@ namespace ExcelHell.Prototype
                 ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.OvertimeTotal,
                 RefEnabled = false,
                 MaxTurns = 10,
-                DurationSeconds = 270f
+                DurationSeconds = 270f,
+                Dataset = new PrototypeLevelDataset
+                {
+                    Hours = new[] { 41d, 37d, 44d, 36d, 40d },
+                    Salary = new[] { 59d, 72d, 64d, 68d, 55d },
+                    Overtime = new[] { 2d, 5d, 1d, 4d, 3d },
+                    Bonus = new[] { 4d, 8d, 3d, 6d, 5d }
+                }
             },
             new PrototypeLevelConfig
             {
@@ -63,7 +94,14 @@ namespace ExcelHell.Prototype
                 FirstOutbreakDelaySeconds = 45f,
                 AnomalyStepSeconds = 10f,
                 RespawnDelaySeconds = 25f,
-                ActiveOutbreakDelaySeconds = 38f
+                ActiveOutbreakDelaySeconds = 38f,
+                Dataset = new PrototypeLevelDataset
+                {
+                    Hours = new[] { 39d, 46d, 34d, 42d, 37d },
+                    Salary = new[] { 61d, 57d, 74d, 66d, 52d },
+                    Overtime = new[] { 3d, 1d, 6d, 2d, 4d },
+                    Bonus = new[] { 6d, 4d, 8d, 7d, 2d }
+                }
             },
             new PrototypeLevelConfig
             {
@@ -80,7 +118,14 @@ namespace ExcelHell.Prototype
                 FirstOutbreakDelaySeconds = 30f,
                 AnomalyStepSeconds = 9f,
                 RespawnDelaySeconds = 20f,
-                ActiveOutbreakDelaySeconds = 30f
+                ActiveOutbreakDelaySeconds = 30f,
+                Dataset = new PrototypeLevelDataset
+                {
+                    Hours = new[] { 38d, 43d, 35d, 46d, 37d },
+                    Salary = new[] { 62d, 69d, 76d, 54d, 71d },
+                    Overtime = new[] { 2d, 4d, 7d, 1d, 5d },
+                    Bonus = new[] { 3d, 7d, 5d, 9d, 4d }
+                }
             }
         };
 
