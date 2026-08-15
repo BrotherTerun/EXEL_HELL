@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "io.bayat.unity.savegamefree": "https://github.com/BayatGames/SaveGameFree.git?path=/Assets/BayatGames/SaveGameFree#1a1a4c4e9873667272a5fc889b27429e4c09cdd7",
     "com.kyrylokuzyk.primetween": "1.4.11",
     "com.unity.2d.animation": "13.0.2",
     "com.unity.2d.aseprite": "3.0.1",
