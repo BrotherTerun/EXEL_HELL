@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Bayat.Unity.SaveGameFree;
+using System.IO;
 using UnityEngine;
 
 namespace ExcelHell.Application
@@ -31,14 +31,19 @@ namespace ExcelHell.Application
 
     public static class AppPersistence
     {
-        private const string ProgressId = "excel_hell_progress.json";
-        private const string SettingsId = "excel_hell_settings.json";
+        private const string SaveDirectoryName = "Saves";
+        private const string ProgressFileName = "excel_hell_progress.json";
+        private const string SettingsFileName = "excel_hell_settings.json";
+
+        private static string SaveDirectoryPath => Path.Combine(Application.persistentDataPath, SaveDirectoryName);
+        private static string ProgressPath => Path.Combine(SaveDirectoryPath, ProgressFileName);
+        private static string SettingsPath => Path.Combine(SaveDirectoryPath, SettingsFileName);
 
         public static bool HasProgress
         {
             get
             {
-                try { return SaveGame.Exists(ProgressId); }
+                try { return File.Exists(ProgressPath); }
                 catch (Exception exception)
                 {
                     Debug.LogWarning($"EXEL HELL: progress existence check failed: {exception.Message}");
@@ -51,7 +56,7 @@ namespace ExcelHell.Application
         {
             try
             {
-                return SaveGame.Load(ProgressId, new AppProgressData()) ?? new AppProgressData();
+                return LoadJson(ProgressPath, new AppProgressData());
             }
             catch (Exception exception)
             {
@@ -81,7 +86,7 @@ namespace ExcelHell.Application
 
             try
             {
-                SaveGame.Save(ProgressId, previous);
+                SaveJson(ProgressPath, previous);
             }
             catch (Exception exception)
             {
@@ -93,7 +98,7 @@ namespace ExcelHell.Application
         {
             try
             {
-                if (SaveGame.Exists(ProgressId)) SaveGame.Delete(ProgressId);
+                if (File.Exists(ProgressPath)) File.Delete(ProgressPath);
             }
             catch (Exception exception)
             {
@@ -106,7 +111,7 @@ namespace ExcelHell.Application
             AppSettingsData settings;
             try
             {
-                settings = SaveGame.Load(SettingsId, null as AppSettingsData);
+                settings = LoadJson<AppSettingsData>(SettingsPath, null);
             }
             catch (Exception exception)
             {
@@ -128,7 +133,7 @@ namespace ExcelHell.Application
             if (settings == null) return;
             try
             {
-                SaveGame.Save(SettingsId, settings);
+                SaveJson(SettingsPath, settings);
             }
             catch (Exception exception)
             {
@@ -145,6 +150,25 @@ namespace ExcelHell.Application
                 Fullscreen = Screen.fullScreen,
                 VSync = QualitySettings.vSyncCount > 0
             };
+        }
+
+        private static T LoadJson<T>(string path, T fallback) where T : class
+        {
+            if (!File.Exists(path)) return fallback;
+            var json = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(json)) return fallback;
+            return JsonUtility.FromJson<T>(json) ?? fallback;
+        }
+
+        private static void SaveJson<T>(string path, T data)
+        {
+            Directory.CreateDirectory(SaveDirectoryPath);
+            var json = JsonUtility.ToJson(data, true);
+            var tempPath = path + ".tmp";
+            File.WriteAllText(tempPath, json);
+
+            if (File.Exists(path)) File.Delete(path);
+            File.Move(tempPath, path);
         }
     }
 
