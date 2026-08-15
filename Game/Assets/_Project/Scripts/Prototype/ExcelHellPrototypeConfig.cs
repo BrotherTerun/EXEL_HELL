@@ -15,7 +15,7 @@ namespace ExcelHell.Prototype
         SalaryForHoursBelowForty = 1 << 5
     }
 
-    [CreateAssetMenu(fileName = "ExcelHellPrototypeConfig", menuName = "EXEL HELL/Prototype Config")]
+    [CreateAssetMenu(fileName = "ExcelHellPrototypeConfig", menuName = "EXCEL HELL/Prototype Config")]
     public sealed class ExcelHellPrototypeConfig : ScriptableObject
     {
         [Header("Fallback / debug values")]
