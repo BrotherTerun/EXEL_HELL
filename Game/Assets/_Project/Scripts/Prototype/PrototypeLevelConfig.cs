@@ -47,7 +47,7 @@ namespace ExcelHell.Prototype
         public int RespawnDelayTurns = 2;
         public int ActiveOutbreakDelayTurns = 3;
 
-        // Realtime branch. Kept in the same level data so both A/B builds use identical content.
+        // Legacy realtime values retained in shared level data for branch compatibility.
         public float DurationSeconds = 300f;
         public float AnomalyStepSeconds = 20f;
         public float FirstOutbreakDelaySeconds = 60f;
@@ -69,9 +69,11 @@ namespace ExcelHell.Prototype
                 Id = "01_basics",
                 NameRu = "Обычный отчёт",
                 NameEn = "Routine Report",
-                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.OvertimeTotal,
+                // One unconditional total + one filtered total. The bonus condition teaches
+                // that unwanted values must be physically moved out before SUM.
+                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.BonusAtLeastFour,
                 RefEnabled = false,
-                MaxTurns = 10,
+                MaxTurns = 12,
                 DurationSeconds = 300f,
                 Dataset = new PrototypeLevelDataset
                 {
@@ -127,6 +129,34 @@ namespace ExcelHell.Prototype
                     Salary = new[] { 62d, 69d, 76d, 54d, 71d },
                     Overtime = new[] { 2d, 4d, 7d, 1d, 5d },
                     Bonus = new[] { 3d, 7d, 5d, 9d, 4d }
+                }
+            },
+            new PrototypeLevelConfig
+            {
+                Id = "04_pressure",
+                NameRu = "Финальная сверка",
+                NameEn = "Final Reconciliation",
+                // Reuses the strongest internal smoke-test structure: one semantic condition
+                // plus two full-column totals under active #REF! pressure.
+                ReportGoals = PrototypeReportGoals.SalaryForHoursBelowForty |
+                              PrototypeReportGoals.OvertimeTotal |
+                              PrototypeReportGoals.BonusTotal,
+                RefEnabled = true,
+                MaxTurns = 20,
+                FirstOutbreakTurn = 2,
+                RespawnDelayTurns = 2,
+                ActiveOutbreakDelayTurns = 3,
+                DurationSeconds = 300f,
+                FirstOutbreakDelaySeconds = 60f,
+                AnomalyStepSeconds = 18f,
+                RespawnDelaySeconds = 40f,
+                ActiveOutbreakDelaySeconds = 60f,
+                Dataset = new PrototypeLevelDataset
+                {
+                    Hours = new[] { 36d, 45d, 39d, 48d, 34d },
+                    Salary = new[] { 67d, 56d, 73d, 61d, 78d },
+                    Overtime = new[] { 4d, 2d, 6d, 1d, 5d },
+                    Bonus = new[] { 5d, 8d, 3d, 7d, 6d }
                 }
             }
         };
