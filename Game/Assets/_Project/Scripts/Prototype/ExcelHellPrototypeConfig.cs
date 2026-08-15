@@ -18,53 +18,46 @@ namespace ExcelHell.Prototype
     [CreateAssetMenu(fileName = "ExcelHellPrototypeConfig", menuName = "EXEL HELL/Prototype Config")]
     public sealed class ExcelHellPrototypeConfig : ScriptableObject
     {
-        [Header("Field")]
+        [Header("Fallback / debug values")]
         [Min(8)] public int rows = 8;
         [Min(8)] public int columns = 8;
-
-        [Header("Turn model")]
         [Min(1)] public int maxTurns = 15;
-
-        [Header("Report goals")]
-        [Tooltip("Select any combination before entering Play Mode.")]
         public PrototypeReportGoals reportGoals =
             PrototypeReportGoals.SalaryTotal |
             PrototypeReportGoals.BonusAtLeastFour |
             PrototypeReportGoals.SalaryOfMaxOvertime;
 
-        [Header("#REF! outbreaks")]
-        [Tooltip("Turns before the first telegraphed outbreak becomes active.")]
+        [Header("Fallback #REF! values")]
         [Min(0)] public int anomalyActivationTurn = 3;
-        [Tooltip("If every active #REF! is quarantined/dies, a new outbreak is scheduled this many turns later.")]
         [Min(1)] public int respawnDelayTurns = 2;
-        [Tooltip("A fresh outbreak is also scheduled after this many turns while other #REF! cells are still active.")]
         [Min(1)] public int outbreakDelayWhileActiveTurns = 3;
         [Min(1)] public int corruptionTurnsBeforeDestroy = 2;
-
-        [Header("Dynamic #REF! spawn")]
-        [Tooltip("Desired Manhattan distance from report-critical data.")]
         [Min(1)] public int spawnPreferredDistance = 2;
-        [Tooltip("Allowed distance deviation around the preferred distance.")]
         [Min(0)] public int spawnDistanceVariation = 1;
-        [Tooltip("Number of equally strong spawn candidates considered before deterministic goal-aware selection.")]
         [Min(1)] public int spawnCandidatePoolSize = 4;
 
         [Header("Prototype debug")]
         public bool showExpectedAnswers = true;
-        [Tooltip("Shows and logs the anchors/candidate pool used by the dynamic #REF! spawn selector.")]
         public bool showSpawnDebug = true;
 
-        public int SafeRows => Mathf.Max(8, rows);
-        public int SafeColumns => Mathf.Max(8, columns);
-        public int SafeMaxTurns => Mathf.Max(1, maxTurns);
-        public int SafeActivationTurn => Mathf.Max(0, anomalyActivationTurn);
-        public int SafeRespawnDelay => Mathf.Max(1, respawnDelayTurns);
-        public int SafeActiveOutbreakDelay => Mathf.Max(1, outbreakDelayWhileActiveTurns);
-        public int SafeCorruptionLifetime => Mathf.Max(1, corruptionTurnsBeforeDestroy);
-        public int SafeSpawnPreferredDistance => Mathf.Max(1, spawnPreferredDistance);
-        public int SafeSpawnDistanceVariation => Mathf.Max(0, spawnDistanceVariation);
-        public int SafeSpawnCandidatePoolSize => Mathf.Max(1, spawnCandidatePoolSize);
+        private PrototypeLevelConfig Level => PrototypeLevelRuntime.Current;
 
-        public bool HasGoal(PrototypeReportGoals goal) => (reportGoals & goal) != 0;
+        public int SafeRows => Mathf.Max(8, Level?.Rows ?? rows);
+        public int SafeColumns => Mathf.Max(8, Level?.Columns ?? columns);
+        public int SafeMaxTurns => Mathf.Max(1, Level?.MaxTurns ?? maxTurns);
+        public int SafeActivationTurn => Mathf.Max(0, Level?.FirstOutbreakTurn ?? anomalyActivationTurn);
+        public int SafeRespawnDelay => Mathf.Max(1, Level?.RespawnDelayTurns ?? respawnDelayTurns);
+        public int SafeActiveOutbreakDelay => Mathf.Max(1, Level?.ActiveOutbreakDelayTurns ?? outbreakDelayWhileActiveTurns);
+        public int SafeCorruptionLifetime => Mathf.Max(1, Level?.CorruptionStepsBeforeDestroy ?? corruptionTurnsBeforeDestroy);
+        public int SafeSpawnPreferredDistance => Mathf.Max(1, Level?.SpawnPreferredDistance ?? spawnPreferredDistance);
+        public int SafeSpawnDistanceVariation => Mathf.Max(0, Level?.SpawnDistanceVariation ?? spawnDistanceVariation);
+        public int SafeSpawnCandidatePoolSize => Mathf.Max(1, Level?.SpawnCandidatePoolSize ?? spawnCandidatePoolSize);
+        public bool RefEnabled => Level?.RefEnabled ?? true;
+
+        public bool HasGoal(PrototypeReportGoals goal)
+        {
+            var selected = Level?.ReportGoals ?? reportGoals;
+            return (selected & goal) != 0;
+        }
     }
 }
