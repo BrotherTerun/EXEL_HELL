@@ -5,18 +5,16 @@ using UnityEngine.UI;
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Keeps MVP 0.5 authored levels isolated from legacy toolbar/tutorial/report assumptions.
-    /// This adapter can be deleted with the experiment without changing the frozen prototype core.
+    /// Keeps MVP 0.5 authored levels isolated from legacy toolbar/tutorial assumptions.
+    /// Report cells remain report infrastructure even when they also carry a formula:
+    /// ReportCell semantics take precedence over FormulaCell semantics.
     /// </summary>
     [DefaultExecutionOrder(1050)]
     public sealed class PrototypeFormulaLevelCompatibility : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
         private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
-        private static readonly FieldInfo ReportColumnField = typeof(ExcelHellPrototype).GetField("reportColumn", Flags);
         private static readonly MethodInfo RefreshAllMethod = typeof(ExcelHellPrototype).GetMethod("RefreshAll", Flags);
-        private static readonly MethodInfo InitializeAnomalyMethod = typeof(ExcelHellPrototype).GetMethod("InitializeAnomaly", Flags);
-        private static readonly FieldInfo RefCommittedField = typeof(PrototypeRefSpawnCommitment).GetField("committed", Flags);
 
         private ExcelHellPrototype appliedTo;
 
@@ -44,7 +42,6 @@ namespace ExcelHell.Prototype
             HideLegacyFormulaButtons(prototype);
             DisableLegacyTutorial();
             RestoreThreatSemantics(prototype, level);
-            UnlockFormulaReportTargets(prototype, level);
             RefreshAllMethod?.Invoke(prototype, null);
             appliedTo = prototype;
         }
@@ -82,23 +79,6 @@ namespace ExcelHell.Prototype
                     if (cell.Occupant?.Kind == ContentKind.Data && cell.Occupant.FieldId == "overtime")
                         cell.Occupant.IsRequiredSource = true;
             }
-        }
-
-        private static void UnlockFormulaReportTargets(ExcelHellPrototype prototype, PrototypeLevelConfig level)
-        {
-            // Legacy core protects the whole report column from #REF! through IsReportInterfaceCell.
-            // Formula-cell rules require report SUM coordinates to be ordinary vulnerable worksheet fields.
-            // Setting the legacy reportColumn sentinel outside the board removes only that old protection:
-            // goal lookup/green presentation still use ReportGoal coordinates, and player DELETE remains blocked by FormulaCells.
-            ReportColumnField?.SetValue(prototype, -1);
-
-            if (!level.RefEnabled) return;
-
-            // Re-plan the first outbreak after removing legacy report protection. The commitment helper ran earlier
-            // (execution order 700), so release its temporary commitment; it will commit the new authored intent next frame.
-            InitializeAnomalyMethod?.Invoke(prototype, null);
-            var commitment = FindFirstObjectByType<PrototypeRefSpawnCommitment>();
-            if (commitment != null) RefCommittedField?.SetValue(commitment, false);
         }
     }
 }
