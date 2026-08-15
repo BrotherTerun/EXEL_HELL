@@ -134,16 +134,19 @@ namespace ExcelHell.Prototype
                 },
                 TokenLayout = new[]
                 {
-                    Field("A1", "salary"), Field("C1", "hours"), Field("D1", "overtime"), Field("F1", "bonus"), Label("H1"),
-                    Data("A3", "ivanov", "hours"), Data("A4", "petrov", "hours"), Data("A5", "sidorov", "hours"), Data("A6", "volkova", "hours"), Data("A7", "kim", "hours"),
-                    Data("C3", "ivanov", "salary"), Data("C4", "petrov", "salary"), Data("C5", "sidorov", "salary"), Data("C6", "volkova", "salary"), Data("C7", "kim", "salary"),
-                    Data("D3", "ivanov", "overtime"), Data("D4", "petrov", "overtime"), Data("D5", "sidorov", "overtime"), Data("D6", "volkova", "overtime"), Data("D7", "kim", "overtime"),
-                    Data("F3", "ivanov", "bonus"), Data("F4", "petrov", "bonus"), Data("F5", "sidorov", "bonus"), Data("F6", "volkova", "bonus"), Data("F7", "kim", "bonus"),
-                    Record("G3", "ivanov"), Record("G4", "petrov"), Record("G5", "sidorov"), Record("G6", "volkova"), Record("G7", "kim")
+                    // Familiar worksheet grammar: employee keys stay on the left, field keys on top.
+                    Field("B1", "salary"), Field("C1", "hours"), Field("E1", "overtime"), Field("G1", "bonus"), Label("H1"),
+                    Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
+
+                    // Raw numbers are deliberately spatially scrambled. D3:D7 and F3:F7 are clean SORT spill lanes.
+                    Data("B3", "ivanov", "hours"), Data("G4", "petrov", "hours"), Data("C5", "sidorov", "hours"), Data("E6", "volkova", "hours"), Data("B8", "kim", "hours"),
+                    Data("G3", "ivanov", "salary"), Data("C4", "petrov", "salary"), Data("E5", "sidorov", "salary"), Data("B6", "volkova", "salary"), Data("G7", "kim", "salary"),
+                    Data("E3", "ivanov", "overtime"), Data("B4", "petrov", "overtime"), Data("G5", "sidorov", "overtime"), Data("C6", "volkova", "overtime"), Data("E7", "kim", "overtime"),
+                    Data("C3", "ivanov", "bonus"), Data("E4", "petrov", "bonus"), Data("B5", "sidorov", "bonus"), Data("G6", "volkova", "bonus"), Data("C7", "kim", "bonus")
                 },
                 FormulaLayout = new[]
                 {
-                    Formula("B2", FormulaKind.Sort), Formula("E2", FormulaKind.Sort),
+                    Formula("D2", FormulaKind.Sort), Formula("F2", FormulaKind.Sort),
                     Formula("H2", FormulaKind.Sum), Formula("H3", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
@@ -159,8 +162,8 @@ namespace ExcelHell.Prototype
             return new PrototypeLevelConfig
             {
                 Id = "02_spill_reuse",
-                NameRu = "Забитый диапазон",
-                NameEn = "Blocked Range",
+                NameRu = "Повторная сортировка",
+                NameEn = "Sort Reuse",
                 ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.BonusTotal,
                 RefEnabled = true,
                 FormulaCellsEnabled = true,
@@ -177,16 +180,18 @@ namespace ExcelHell.Prototype
                 },
                 TokenLayout = new[]
                 {
-                    Field("A1", "salary"), Field("C1", "bonus"), Field("D1", "hours"), Field("F1", "overtime"), Label("H1"),
-                    Data("A3", "ivanov", "salary"), Data("A4", "petrov", "salary"), Data("A5", "sidorov", "salary"), Data("A6", "volkova", "salary"), Data("A7", "kim", "salary"),
-                    Data("C3", "ivanov", "hours"), Data("C4", "petrov", "hours"), Data("C5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("C7", "kim", "hours"),
-                    Data("D3", "ivanov", "overtime"), Data("D4", "petrov", "overtime"), Data("D5", "sidorov", "overtime"), Data("D6", "volkova", "overtime"), Data("D7", "kim", "overtime"),
-                    Data("E3", "ivanov", "bonus"), Data("E4", "petrov", "bonus"), Data("E5", "sidorov", "bonus"), Data("E6", "volkova", "bonus"), Data("E7", "kim", "bonus"),
-                    Record("G3", "ivanov"), Record("G4", "petrov"), Record("G5", "sidorov"), Record("G6", "volkova"), Record("B5", "kim")
+                    Field("B1", "salary"), Field("C1", "bonus"), Field("E1", "hours"), Field("G1", "overtime"), Label("H1"),
+                    Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
+
+                    // D3:D7 is intentionally clear: this level tests formula reuse, not an accidental blocked spill.
+                    Data("B3", "ivanov", "salary"), Data("F4", "petrov", "salary"), Data("C5", "sidorov", "salary"), Data("G6", "volkova", "salary"), Data("E7", "kim", "salary"),
+                    Data("G3", "ivanov", "bonus"), Data("C4", "petrov", "bonus"), Data("F5", "sidorov", "bonus"), Data("B6", "volkova", "bonus"), Data("C7", "kim", "bonus"),
+                    Data("E3", "ivanov", "hours"), Data("B4", "petrov", "hours"), Data("G5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("F7", "kim", "hours"),
+                    Data("C3", "ivanov", "overtime"), Data("E4", "petrov", "overtime"), Data("B5", "sidorov", "overtime"), Data("F6", "volkova", "overtime"), Data("G7", "kim", "overtime")
                 },
                 FormulaLayout = new[]
                 {
-                    Formula("B2", FormulaKind.Sort),
+                    Formula("D2", FormulaKind.Sort),
                     Formula("H2", FormulaKind.Sum), Formula("H3", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
@@ -220,16 +225,18 @@ namespace ExcelHell.Prototype
                 },
                 TokenLayout = new[]
                 {
-                    Field("A1", "hours"), Field("B1", "salary"), Field("C1", "overtime"), Field("E1", "bonus"), Label("H1"),
-                    Data("A3", "ivanov", "salary"), Data("A4", "petrov", "salary"), Data("A5", "sidorov", "salary"), Data("F5", "volkova", "salary"), Data("F6", "kim", "salary"),
-                    Data("A7", "ivanov", "hours"), Data("B7", "petrov", "hours"), Data("C7", "sidorov", "hours"), Data("D7", "volkova", "hours"), Data("F7", "kim", "hours"),
-                    Data("D4", "ivanov", "overtime"), Data("D3", "petrov", "overtime"), Data("D5", "sidorov", "overtime"), Data("D6", "volkova", "overtime"), Data("D8", "kim", "overtime"),
-                    Data("F3", "ivanov", "bonus"), Data("F4", "petrov", "bonus"), Data("B8", "sidorov", "bonus"), Data("A8", "volkova", "bonus"), Data("C8", "kim", "bonus"),
-                    Record("B3", "ivanov"), Record("B4", "petrov"), Record("B5", "sidorov"), Record("B6", "volkova")
+                    Field("B1", "salary"), Field("C1", "hours"), Field("D1", "overtime"), Field("G1", "bonus"), Label("H1"),
+                    Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
+
+                    // Salary keeps the two intentional subtotal clusters; the remaining fields are scrambled around them.
+                    Data("B3", "ivanov", "salary"), Data("B4", "petrov", "salary"), Data("B5", "sidorov", "salary"), Data("D6", "volkova", "salary"), Data("D7", "kim", "salary"),
+                    Data("G3", "ivanov", "hours"), Data("C4", "petrov", "hours"), Data("E5", "sidorov", "hours"), Data("B6", "volkova", "hours"), Data("G7", "kim", "hours"),
+                    Data("D3", "ivanov", "overtime"), Data("G4", "petrov", "overtime"), Data("C5", "sidorov", "overtime"), Data("E6", "volkova", "overtime"), Data("B7", "kim", "overtime"),
+                    Data("C3", "ivanov", "bonus"), Data("E4", "petrov", "bonus"), Data("G5", "sidorov", "bonus"), Data("C6", "volkova", "bonus"), Data("E7", "kim", "bonus")
                 },
                 FormulaLayout = new[]
                 {
-                    Formula("C2", FormulaKind.Sum), Formula("E2", FormulaKind.Sort),
+                    Formula("C2", FormulaKind.Sum), Formula("F2", FormulaKind.Sort),
                     Formula("H2", FormulaKind.Sum), Formula("H3", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
@@ -265,16 +272,19 @@ namespace ExcelHell.Prototype
                 },
                 TokenLayout = new[]
                 {
-                    Field("A1", "hours"), Field("C1", "salary"), Field("E1", "overtime"), Field("F1", "bonus"), Label("H1"),
-                    Data("A3", "ivanov", "hours"), Data("A4", "petrov", "hours"), Data("A5", "sidorov", "hours"), Data("A6", "volkova", "hours"), Data("A7", "kim", "hours"),
-                    Data("C3", "ivanov", "salary"), Data("C4", "petrov", "salary"), Data("C5", "sidorov", "salary"), Data("C6", "volkova", "salary"), Data("C7", "kim", "salary"),
-                    Data("E3", "ivanov", "overtime"), Data("E4", "petrov", "overtime"), Data("E5", "sidorov", "overtime"), Data("E6", "volkova", "overtime"), Data("E7", "kim", "overtime"),
-                    Data("F3", "ivanov", "bonus"), Data("F4", "petrov", "bonus"), Data("F5", "sidorov", "bonus"), Data("F6", "volkova", "bonus"), Data("F7", "kim", "bonus"),
-                    Record("G3", "ivanov"), Record("G4", "petrov"), Record("G5", "sidorov"), Record("G6", "volkova"), Record("G7", "kim")
+                    Field("A1", "hours"), Field("C1", "salary"), Field("E1", "overtime"), Field("G1", "bonus"), Label("H1"),
+                    Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
+
+                    // Late pressure level: B5 is an intentional Bonus blocker in the first SORT lane.
+                    // Other tokens remain spatially scrambled; moving-set tokens may already sit in their future lanes.
+                    Data("B3", "ivanov", "hours"), Data("C4", "petrov", "hours"), Data("E5", "sidorov", "hours"), Data("G6", "volkova", "hours"), Data("B7", "kim", "hours"),
+                    Data("D3", "ivanov", "salary"), Data("G4", "petrov", "salary"), Data("C5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("D7", "kim", "salary"),
+                    Data("F3", "ivanov", "overtime"), Data("C3", "petrov", "overtime"), Data("F5", "sidorov", "overtime"), Data("G5", "volkova", "overtime"), Data("F7", "kim", "overtime"),
+                    Data("G3", "ivanov", "bonus"), Data("E4", "petrov", "bonus"), Data("B5", "sidorov", "bonus"), Data("C6", "volkova", "bonus"), Data("E7", "kim", "bonus")
                 },
                 FormulaLayout = new[]
                 {
-                    Formula("B2", FormulaKind.Sort), Formula("D2", FormulaKind.Sort),
+                    Formula("B2", FormulaKind.Sort), Formula("D2", FormulaKind.Sort), Formula("F2", FormulaKind.Sort),
                     Formula("H2", FormulaKind.Sum), Formula("H3", FormulaKind.Sum), Formula("H4", FormulaKind.Sum)
                 },
                 GoalLayout = new[]

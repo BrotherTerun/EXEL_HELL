@@ -11,12 +11,12 @@ namespace ExcelHell.Prototype
     /// <summary>
     /// MVP 0.5 experimental formula-field runtime.
     /// FormulaKind belongs to CellModel (coordinate infrastructure); Occupant remains ordinary token data.
-    /// Existing levels are intentionally not authored with formula cells in this pass.
     /// </summary>
     [DefaultExecutionOrder(1100)]
     public sealed class PrototypeFormulaCells : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        private static readonly Color FormulaTextColor = new(0.03f, 0.30f, 0.86f, 1f);
 
         private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
         private static readonly FieldInfo ViewsField = typeof(ExcelHellPrototype).GetField("views", Flags);
@@ -48,9 +48,6 @@ namespace ExcelHell.Prototype
             DontDestroyOnLoad(helper.gameObject);
         }
 
-        /// <summary>
-        /// Level authoring hook for the next pass. Formula is attached to the coordinate, not to Occupant.
-        /// </summary>
         public static void AssignFormula(CellModel cell, FormulaKind formula)
         {
             if (cell == null) return;
@@ -102,7 +99,7 @@ namespace ExcelHell.Prototype
             rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
             rect.pivot = new Vector2(0f, 1f);
             rect.anchoredPosition = new Vector2(24f, -62f);
-            rect.sizeDelta = new Vector2(836f, 28f);
+            rect.sizeDelta = new Vector2(900f, 28f);
             root.GetComponent<Image>().color = new Color(0.96f, 0.97f, 0.98f, 1f);
 
             var fx = CreateText(root.transform, "fx", 14, FontStyle.Bold, TextAnchor.MiddleCenter);
@@ -110,7 +107,7 @@ namespace ExcelHell.Prototype
             fx.color = new Color(0.22f, 0.28f, 0.32f, 1f);
 
             formulaBarText = CreateText(root.transform, string.Empty, 14, FontStyle.Normal, TextAnchor.MiddleLeft);
-            SetRect(formulaBarText.rectTransform, 48f, 0f, 780f, 28f);
+            SetRect(formulaBarText.rectTransform, 48f, 0f, 844f, 28f);
             formulaBarText.color = new Color(0.12f, 0.13f, 0.15f, 1f);
         }
 
@@ -154,7 +151,8 @@ namespace ExcelHell.Prototype
                 image.color = new Color(1f, 1f, 1f, 0.001f);
 
                 var text = CreateText(overlayGo.transform, string.Empty, 13, FontStyle.Bold, TextAnchor.MiddleCenter);
-                Stretch(text.rectTransform, 2f);
+                Stretch(text.rectTransform, 4f);
+                text.color = FormulaTextColor;
                 text.raycastTarget = false;
 
                 var overlay = overlayGo.GetComponent<FormulaCellOverlay>();
@@ -178,6 +176,7 @@ namespace ExcelHell.Prototype
                 }
 
                 overlay.SetFormulaText(FormulaDisplay(cell));
+                overlay.SetTextColor(FormulaTextColor);
                 if (!IsReportTarget(cell))
                     overlay.SetBackground(new Color(0.88f, 0.92f, 0.97f, 1f));
             }
@@ -299,7 +298,6 @@ namespace ExcelHell.Prototype
                 if (tokens[i] != null)
                     destinations[i].Occupant = tokens[i];
 
-            // The selected key becomes the content of the SORT field. Formula property stays on target coordinate.
             keyCell.Occupant = null;
             target.Occupant = key;
 
@@ -480,6 +478,11 @@ namespace ExcelHell.Prototype
         public void SetFormulaText(string value)
         {
             if (text != null) text.text = value;
+        }
+
+        public void SetTextColor(Color value)
+        {
+            if (text != null) text.color = value;
         }
 
         public void SetBackground(Color value)

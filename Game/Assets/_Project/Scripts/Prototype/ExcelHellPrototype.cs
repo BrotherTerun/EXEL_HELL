@@ -113,7 +113,6 @@ namespace ExcelHell.Prototype
             Place(0, reportColumn, ContentToken.Label("report.label", "label.report"));
             BuildReportGoals();
 
-            // MVP 0.4: fresh values to remove memorized answers from repeated MVP 0.3 playtests.
             var values = new Dictionary<string, double[]>
             {
                 ["hours"] = new[] { 38d, 42d, 35d, 47d, 39d },
@@ -222,8 +221,6 @@ namespace ExcelHell.Prototype
         private bool TryChooseDynamicSpawnCell(out CellModel result)
         {
             result = null;
-
-            // Only live report-critical data are primary anchors. Report interface cells never host an outbreak.
             var anchors = cells.Cast<CellModel>()
                 .Where(cell => cell.State != CellState.Destroyed && cell.Occupant?.IsRequiredSource == true)
                 .ToList();
@@ -332,10 +329,11 @@ namespace ExcelHell.Prototype
 
         private void BuildGrid(Transform parent)
         {
-            const float maxWidth = 836f;
-            const float maxHeight = 650f;
-            var cellWidth = Mathf.Min(86f, maxWidth / (columns + 1));
-            var cellHeight = Mathf.Min(58f, maxHeight / (rows + 1));
+            // Larger worksheet cells improve readability while keeping the in-cell font size unchanged.
+            const float maxWidth = 900f;
+            const float maxHeight = 720f;
+            var cellWidth = Mathf.Min(100f, maxWidth / (columns + 1));
+            var cellHeight = Mathf.Min(70f, maxHeight / (rows + 1));
 
             var gridRoot = new GameObject("Spreadsheet", typeof(RectTransform), typeof(GridLayoutGroup));
             gridRoot.transform.SetParent(parent, false);
@@ -359,7 +357,7 @@ namespace ExcelHell.Prototype
         private void BuildSidebar(Transform parent)
         {
             var side = CreatePanel(parent, "Sidebar", new Color(0.985f, 0.985f, 0.985f, 1f));
-            SetRect(side.rectTransform, 900, -82, 660, 760, new Vector2(0, 1));
+            SetRect(side.rectTransform, 950, -82, 650, 760, new Vector2(0, 1));
 
             headingText = CreateText(side.transform, string.Empty, 24, FontStyle.Bold, TextAnchor.UpperLeft);
             SetRect(headingText.rectTransform, 20, -18, 500, 38, new Vector2(0, 1));
@@ -396,6 +394,7 @@ namespace ExcelHell.Prototype
             outline.effectColor = new Color(0.77f, 0.79f, 0.82f, 1f);
             outline.effectDistance = new Vector2(1f, -1f);
 
+            // Intentionally unchanged font size: readability comes from cell space, not typography scaling.
             var label = CreateText(go.transform, string.Empty, 14, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(label.rectTransform, 3);
             label.raycastTarget = false;
@@ -503,7 +502,6 @@ namespace ExcelHell.Prototype
 
             if (key.Kind == ContentKind.RecordKey)
             {
-                // A record always owns the complete field schema. Missing values remain empty semantic slots.
                 tokens = schema.Fields
                     .Select(fieldId => data.FirstOrDefault(t => t.RecordId == key.RecordId && t.FieldId == fieldId))
                     .ToList();
@@ -512,7 +510,6 @@ namespace ExcelHell.Prototype
             }
             else
             {
-                // A field always owns one slot per record. CUT/DELETE/#REF!/consumption must not collapse identity.
                 tokens = schema.Records
                     .Select(recordId => data.FirstOrDefault(t => t.FieldId == key.FieldId && t.RecordId == recordId))
                     .ToList();
@@ -537,12 +534,7 @@ namespace ExcelHell.Prototype
         private bool TryDestinations(CellModel keyCell, List<ContentToken> movingTokens, int dr, int dc, out List<CellModel> destinations)
         {
             destinations = new List<CellModel>();
-            var movingIds = movingTokens
-                .Where(token => token != null)
-                .Select(token => token.Id)
-                .ToHashSet();
-
-            // Destination span follows the full semantic schema, not just surviving physical tokens.
+            var movingIds = movingTokens.Where(token => token != null).Select(token => token.Id).ToHashSet();
             for (var i = 1; i <= movingTokens.Count; i++)
             {
                 var row = keyCell.Row + dr * i;
@@ -558,17 +550,11 @@ namespace ExcelHell.Prototype
 
         private void ExecuteSort(SortPlan plan)
         {
-            var movingIds = plan.Tokens
-                .Where(token => token != null)
-                .Select(token => token.Id)
-                .ToHashSet();
-
+            var movingIds = plan.Tokens.Where(token => token != null).Select(token => token.Id).ToHashSet();
             foreach (var cell in cells)
                 if (cell.Occupant != null && movingIds.Contains(cell.Occupant.Id)) cell.Occupant = null;
-
             for (var i = 0; i < plan.Tokens.Count; i++)
-                if (plan.Tokens[i] != null)
-                    plan.Destinations[i].Occupant = plan.Tokens[i];
+                if (plan.Tokens[i] != null) plan.Destinations[i].Occupant = plan.Tokens[i];
         }
 
         private IEnumerable<ContentToken> AllDataTokens()
@@ -611,8 +597,6 @@ namespace ExcelHell.Prototype
             var provenance = pendingSumSources.SelectMany(source => source.Occupant.SourceTokenIds ?? new List<string>()).Distinct().ToArray();
             var required = pendingSumSources.Any(source => source.Occupant.IsRequiredSource);
             var reportTarget = IsReportTarget(row, column);
-
-            // SUM is destructive in worksheet space, but writing a report answer is a non-consuming calculation.
             if (!reportTarget)
                 foreach (var source in pendingSumSources) source.Occupant = null;
 
@@ -887,17 +871,12 @@ namespace ExcelHell.Prototype
         }
 
         private bool IsReportTarget(int row, int column) => goals.Any(g => g.TargetRow == row && g.TargetColumn == column);
-
-        private bool IsReportInterfaceCell(int row, int column) =>
-            column == reportColumn && (row == 0 || IsReportTarget(row, column));
+        private bool IsReportInterfaceCell(int row, int column) => column == reportColumn && (row == 0 || IsReportTarget(row, column));
 
         private bool IsIntentTarget(int row, int column)
         {
-            // While a future outbreak is telegraphed, display only that spawn warning.
-            // The active movement intent is rendered by PrototypeMovementIntentOverlay.
             if (pendingSpawnIntent.HasValue)
                 return pendingSpawnIntent.Value.Row == row && pendingSpawnIntent.Value.Column == column;
-
             return currentIntent.HasValue &&
                    currentIntent.Value.TargetRow == row && currentIntent.Value.TargetColumn == column;
         }
@@ -1017,7 +996,6 @@ namespace ExcelHell.Prototype
                 return;
             }
 
-            // Intent fill is stable. Selection is represented by the blue outline and must not hide/move the orange telegraph.
             background.color = intentTarget
                 ? new Color(1f, 0.73f, 0.34f, 1f)
                 : selected
@@ -1031,7 +1009,9 @@ namespace ExcelHell.Prototype
             label.color = new Color(0.12f, 0.13f, 0.15f, 1f);
             label.fontStyle = reportTarget || model.Occupant?.Kind == ContentKind.RecordKey || model.Occupant?.Kind == ContentKind.FieldKey
                 ? FontStyle.Bold : FontStyle.Normal;
-            label.text = displayToken(model.Occupant, false);
+
+            // Formula-cell overlay owns the visible text. Occupant remains in the model but is not drawn twice.
+            label.text = model.IsFormula ? string.Empty : displayToken(model.Occupant, false);
         }
 
         public void OnPointerDown(PointerEventData eventData)
