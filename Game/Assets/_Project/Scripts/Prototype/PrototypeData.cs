@@ -11,6 +11,13 @@ namespace ExcelHell.Prototype
         Destroyed
     }
 
+    public enum FormulaKind
+    {
+        None,
+        Sum,
+        Sort
+    }
+
     public enum ContentKind
     {
         Data,
@@ -111,6 +118,9 @@ namespace ExcelHell.Prototype
         public int CorruptionAge;
         public ContentToken Occupant;
 
+        // MVP 0.5: formula is infrastructure owned by this coordinate, never by Occupant.
+        public FormulaKind Formula;
+
         public CellState State
         {
             get => state;
@@ -124,6 +134,8 @@ namespace ExcelHell.Prototype
 
         public string Address => $"{ExcelHellPrototype.ColumnName(Column)}{Row + 1}";
         public bool IsEmpty => Occupant == null;
+        public bool IsFormula => Formula != FormulaKind.None;
+        public bool CanActivateFormula => State == CellState.Normal && IsFormula && Occupant == null;
     }
 
     public sealed class WorksheetSchema
