@@ -223,7 +223,7 @@ namespace ExcelHell.Prototype
         {
             result = null;
 
-            // Only live report-critical data are primary anchors. Empty report targets do not bias spawn.
+            // Only live report-critical data are primary anchors. Report interface cells never host an outbreak.
             var anchors = cells.Cast<CellModel>()
                 .Where(cell => cell.State != CellState.Destroyed && cell.Occupant?.IsRequiredSource == true)
                 .ToList();
@@ -241,7 +241,7 @@ namespace ExcelHell.Prototype
 
             var scored = cells.Cast<CellModel>()
                 .Where(cell => cell.State == CellState.Normal)
-                .Where(cell => !IsReportTarget(cell.Row, cell.Column))
+                .Where(cell => !IsReportInterfaceCell(cell.Row, cell.Column))
                 .Where(cell => cell.Occupant?.IsRequiredSource != true)
                 .Select(cell => new
                 {
@@ -294,7 +294,7 @@ namespace ExcelHell.Prototype
             var intent = pendingSpawnIntent.Value;
             var spawn = cells[intent.Row, intent.Column];
 
-            if (spawn.State != CellState.Normal || spawn.Occupant?.IsRequiredSource == true || IsReportTarget(spawn.Row, spawn.Column))
+            if (spawn.State != CellState.Normal || spawn.Occupant?.IsRequiredSource == true || IsReportInterfaceCell(spawn.Row, spawn.Column))
             {
                 pendingSpawnIntent = null;
                 ScheduleNextOutbreak(1);
@@ -666,7 +666,14 @@ namespace ExcelHell.Prototype
                 SetStatus("ui.deleteNeed");
                 return;
             }
+
             var cell = selection[0];
+            if (IsReportInterfaceCell(cell.Row, cell.Column))
+            {
+                SetStatus("ui.deleteReportProtected");
+                return;
+            }
+
             var quarantinedRef = cell.State == CellState.Corrupted;
             cell.Occupant = null;
             cell.State = CellState.Destroyed;
@@ -753,7 +760,8 @@ namespace ExcelHell.Prototype
 
         private bool IsIntentValid(AnomalyIntent intent) =>
             cells[intent.SourceRow, intent.SourceColumn].State == CellState.Corrupted &&
-            cells[intent.TargetRow, intent.TargetColumn].State == CellState.Normal;
+            cells[intent.TargetRow, intent.TargetColumn].State == CellState.Normal &&
+            !IsReportInterfaceCell(intent.TargetRow, intent.TargetColumn);
 
         private void GenerateIntent()
         {
@@ -768,6 +776,7 @@ namespace ExcelHell.Prototype
             {
                 var candidates = Neighbours(source)
                     .Where(cell => cell.State == CellState.Normal)
+                    .Where(cell => !IsReportInterfaceCell(cell.Row, cell.Column))
                     .OrderByDescending(cell => cell.Occupant?.IsRequiredSource == true)
                     .ThenBy(DistanceToNearestRequiredToken)
                     .ThenBy(cell => cell.Row)
@@ -878,6 +887,9 @@ namespace ExcelHell.Prototype
         }
 
         private bool IsReportTarget(int row, int column) => goals.Any(g => g.TargetRow == row && g.TargetColumn == column);
+
+        private bool IsReportInterfaceCell(int row, int column) =>
+            column == reportColumn && (row == 0 || IsReportTarget(row, column));
 
         private bool IsIntentTarget(int row, int column)
         {
