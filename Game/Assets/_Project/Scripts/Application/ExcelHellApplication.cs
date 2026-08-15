@@ -10,10 +10,6 @@ using UnityEngine.UI;
 
 namespace ExcelHell.Application
 {
-    /// <summary>
-    /// Runtime application shell for the jam build. It deliberately lives outside the prototype
-    /// scene so the graybox remains replaceable while menu/settings/save flow stays stable.
-    /// </summary>
     public sealed class ExcelHellApplication : MonoBehaviour
     {
         private const int UiSortingOrder = 5000;
@@ -28,18 +24,51 @@ namespace ExcelHell.Application
         private GameObject pauseScreen;
         private GameObject settingsScreen;
         private GameObject loadScreen;
+        private GameObject helpScreen;
+        private GameObject resolutionPopup;
         private GameObject currentScreen;
-        private Text continueText;
+
         private Button continueButton;
-        private Text loadInfoText;
+        private Text titleText;
+        private Text subtitleText;
+        private Text newGameText;
+        private Text continueText;
+        private Text loadButtonText;
+        private Text settingsButtonText;
+        private Text quitText;
+        private Text pauseTitleText;
+        private Text resumeText;
+        private Text saveText;
+        private Text pauseLoadText;
+        private Text pauseSettingsText;
+        private Text helpButtonText;
+        private Text resetLevelText;
+        private Text mainMenuText;
+        private Text settingsTitleText;
+        private Text masterLabel;
+        private Text musicLabel;
+        private Text sfxLabel;
         private Text fullscreenText;
         private Text vsyncText;
         private Text resolutionText;
-        private Text masterText;
-        private Text musicText;
-        private Text sfxText;
+        private Text languageText;
+        private Text applyText;
+        private Text defaultsText;
+        private Text cancelText;
+        private Text loadTitleText;
+        private Text loadInfoText;
+        private Text loadSlotText;
+        private Text deleteSaveText;
+        private Text backFromLoadText;
+        private Text helpTitleText;
+        private Text helpBodyText;
+        private Text backFromHelpText;
+
+        private Slider masterSlider;
+        private Slider musicSlider;
+        private Slider sfxSlider;
+
         private AppSettingsData editingSettings;
-        private int resolutionIndex;
         private bool settingsOpenedFromGameplay;
 
         public static bool ShellAvailable => instance != null;
@@ -71,6 +100,7 @@ namespace ExcelHell.Application
             BuildResolutionList();
             BuildUi();
             AppSettingsService.LoadAndApply();
+            RefreshLocalizedText();
             ShowMainMenu();
         }
 
@@ -80,13 +110,19 @@ namespace ExcelHell.Application
             var keyboard = Keyboard.current;
             if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
 
+            if (resolutionPopup != null && resolutionPopup.activeSelf)
+            {
+                resolutionPopup.SetActive(false);
+                return;
+            }
+
             if (settingsScreen.activeSelf)
             {
                 CloseSettings();
                 return;
             }
 
-            if (loadScreen.activeSelf)
+            if (loadScreen.activeSelf || helpScreen.activeSelf)
             {
                 CloseSubscreen();
                 return;
@@ -95,11 +131,7 @@ namespace ExcelHell.Application
             SetPaused(!Paused);
         }
 
-        public static bool CanPrototypeBootstrap()
-        {
-            // Preserve old behaviour if this script is removed/disabled on another branch.
-            return instance == null || GameplayActive;
-        }
+        public static bool CanPrototypeBootstrap() => instance == null || GameplayActive;
 
         public static void NotifyLevelAdvanced(int levelIndex)
         {
@@ -118,6 +150,21 @@ namespace ExcelHell.Application
             AppPersistence.SaveProgress(level, level, false, new[] { flag });
         }
 
+        public static void OpenGameplayMenu()
+        {
+            if (instance == null || !GameplayActive) return;
+            instance.SetPaused(true);
+        }
+
+        public static string CurrentLanguageCode =>
+            AppSettingsService.Current?.LanguageCode ?? "ru";
+
+        private bool IsRussian => string.Equals(
+            editingSettings?.LanguageCode ?? AppSettingsService.Current?.LanguageCode ?? "ru",
+            "ru", StringComparison.OrdinalIgnoreCase);
+
+        private string L(string ru, string en) => IsRussian ? ru : en;
+
         private void ShowMainMenu()
         {
             Time.timeScale = 1f;
@@ -128,6 +175,8 @@ namespace ExcelHell.Application
             mainScreen.SetActive(true);
             currentScreen = mainScreen;
             screenHistory.Clear();
+            editingSettings = null;
+            RefreshLocalizedText();
             RefreshContinueState();
         }
 
@@ -150,6 +199,7 @@ namespace ExcelHell.Application
             Time.timeScale = 1f;
             Paused = false;
             GameplayActive = true;
+            editingSettings = null;
             HideAllScreens();
             PrototypeLevelRuntime.SetCurrentIndex(levelIndex);
             DestroyPrototypeIfPresent();
@@ -166,6 +216,8 @@ namespace ExcelHell.Application
             {
                 pauseScreen.SetActive(true);
                 currentScreen = pauseScreen;
+                screenHistory.Clear();
+                RefreshLocalizedText();
             }
         }
 
@@ -175,11 +227,29 @@ namespace ExcelHell.Application
             SetPaused(false);
         }
 
+        private void ResetCurrentLevel()
+        {
+            if (!GameplayActive) return;
+            Time.timeScale = 1f;
+            Paused = false;
+            HideAllScreens();
+            DestroyPrototypeIfPresent();
+            new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
+        }
+
         private void OpenLoadScreen(bool fromGameplay)
         {
             settingsOpenedFromGameplay = fromGameplay;
             PushScreen(loadScreen);
             RefreshLoadInfo();
+            RefreshLocalizedText();
+        }
+
+        private void OpenHelpScreen(bool fromGameplay)
+        {
+            settingsOpenedFromGameplay = fromGameplay;
+            PushScreen(helpScreen);
+            RefreshLocalizedText();
         }
 
         private void LoadSelectedSave()
@@ -200,26 +270,30 @@ namespace ExcelHell.Application
         {
             settingsOpenedFromGameplay = fromGameplay;
             editingSettings = CloneSettings(AppSettingsService.Current ?? AppPersistence.DefaultSettings());
-            SyncResolutionIndex();
-            RefreshSettingsLabels();
+            SyncSettingsControls();
+            RefreshLocalizedText();
             PushScreen(settingsScreen);
         }
 
         private void ApplyAndCloseSettings()
         {
+            PullSliderValues();
             AppSettingsService.Apply(editingSettings, true);
+            editingSettings = null;
             CloseSettings();
         }
 
         private void ResetSettings()
         {
             editingSettings = AppPersistence.DefaultSettings();
-            SyncResolutionIndex();
-            RefreshSettingsLabels();
+            SyncSettingsControls();
+            RefreshLocalizedText();
         }
 
         private void CloseSettings()
         {
+            if (resolutionPopup != null) resolutionPopup.SetActive(false);
+            editingSettings = null;
             if (settingsOpenedFromGameplay)
             {
                 HideAllScreens();
@@ -236,6 +310,7 @@ namespace ExcelHell.Application
                 currentScreen = mainScreen;
                 screenHistory.Clear();
             }
+            RefreshLocalizedText();
         }
 
         private void CloseSubscreen()
@@ -246,6 +321,7 @@ namespace ExcelHell.Application
                 HideAllScreens();
                 previous.SetActive(true);
                 currentScreen = previous;
+                RefreshLocalizedText();
                 return;
             }
             CloseSettings();
@@ -265,14 +341,16 @@ namespace ExcelHell.Application
             if (pauseScreen != null) pauseScreen.SetActive(false);
             if (settingsScreen != null) settingsScreen.SetActive(false);
             if (loadScreen != null) loadScreen.SetActive(false);
+            if (helpScreen != null) helpScreen.SetActive(false);
+            if (resolutionPopup != null) resolutionPopup.SetActive(false);
         }
 
         private void RefreshContinueState()
         {
             if (continueButton == null) return;
-            var hasSave = AppPersistence.HasProgress;
-            continueButton.interactable = hasSave;
-            if (continueText != null) continueText.text = hasSave ? "ПРОДОЛЖИТЬ / CONTINUE" : "ПРОДОЛЖИТЬ / NO SAVE";
+            continueButton.interactable = AppPersistence.HasProgress;
+            if (continueText != null)
+                continueText.text = AppPersistence.HasProgress ? L("ПРОДОЛЖИТЬ", "CONTINUE") : L("ПРОДОЛЖИТЬ — НЕТ СОХРАНЕНИЯ", "CONTINUE — NO SAVE");
         }
 
         private void RefreshLoadInfo()
@@ -280,14 +358,17 @@ namespace ExcelHell.Application
             if (loadInfoText == null) return;
             if (!AppPersistence.HasProgress)
             {
-                loadInfoText.text = "СОХРАНЕНИЙ НЕТ / NO SAVE DATA";
+                loadInfoText.text = L("Сохранений нет", "No save data");
                 return;
             }
 
             var data = AppPersistence.LoadProgress();
             var level = PrototypeLevelCatalog.Get(data.CurrentLevelIndex);
+            var levelName = IsRussian ? level.NameRu : level.NameEn;
             var timestamp = string.IsNullOrEmpty(data.SavedAtUtc) ? "—" : data.SavedAtUtc;
-            loadInfoText.text = $"СЛОТ 01\nУровень {data.CurrentLevelIndex + 1}: {level.NameRu}\nUnlocked: {data.HighestUnlockedLevelIndex + 1}\nSaved: {timestamp}";
+            loadInfoText.text = IsRussian
+                ? $"Слот 01\nУровень {data.CurrentLevelIndex + 1}: {levelName}\nОткрыто уровней: {data.HighestUnlockedLevelIndex + 1}\nСохранено: {timestamp}"
+                : $"Slot 01\nLevel {data.CurrentLevelIndex + 1}: {levelName}\nUnlocked levels: {data.HighestUnlockedLevelIndex + 1}\nSaved: {timestamp}";
         }
 
         private void BuildUi()
@@ -307,116 +388,283 @@ namespace ExcelHell.Application
             pauseScreen = CreateScreen("Pause Menu", new Color(0.02f, 0.025f, 0.03f, 0.94f));
             settingsScreen = CreateScreen("Settings", new Color(0.025f, 0.03f, 0.035f, 0.98f));
             loadScreen = CreateScreen("Load Game", new Color(0.025f, 0.03f, 0.035f, 0.98f));
+            helpScreen = CreateScreen("Help", new Color(0.025f, 0.03f, 0.035f, 0.98f));
 
             BuildMainMenu();
             BuildPauseMenu();
             BuildSettingsMenu();
             BuildLoadMenu();
+            BuildHelpMenu();
         }
 
         private void BuildMainMenu()
         {
-            var panel = CreatePanel(mainScreen.transform, 610f, 720f);
-            CreateLabel(panel, "EXEL HELL", 58, FontStyle.Bold, 82f);
-            CreateLabel(panel, "CORPORATE SPREADSHEET CLIENT // BUILD SHELL", 18, FontStyle.Normal, 42f);
-            AddSpacer(panel, 34f);
-            CreateButton(panel, "НОВАЯ ИГРА / NEW GAME", NewGame);
-            continueButton = CreateButton(panel, "ПРОДОЛЖИТЬ / CONTINUE", ContinueGame, out continueText);
-            CreateButton(panel, "ЗАГРУЗИТЬ / LOAD", () => OpenLoadScreen(false));
-            CreateButton(panel, "НАСТРОЙКИ / SETTINGS", () => OpenSettings(false));
-            CreateButton(panel, "ВЫХОД / QUIT", QuitGame);
-            AddSpacer(panel, 22f);
-            CreateLabel(panel, "Псевдо-Excel tactical puzzle // application shell", 15, FontStyle.Italic, 32f);
+            var panel = CreatePanel(mainScreen.transform, 610f, 690f);
+            titleText = CreateLabel(panel, "EXEL HELL", 58, FontStyle.Bold, 78f);
+            subtitleText = CreateLabel(panel, "", 18, FontStyle.Normal, 34f);
+            AddSpacer(panel, 18f);
+            CreateButton(panel, "", NewGame, out newGameText);
+            continueButton = CreateButton(panel, "", ContinueGame, out continueText);
+            CreateButton(panel, "", () => OpenLoadScreen(false), out loadButtonText);
+            CreateButton(panel, "", () => OpenSettings(false), out settingsButtonText);
+            CreateButton(panel, "", QuitGame, out quitText);
         }
 
         private void BuildPauseMenu()
         {
-            var panel = CreatePanel(pauseScreen.transform, 560f, 650f);
-            CreateLabel(panel, "ПАУЗА / PAUSED", 42, FontStyle.Bold, 76f);
-            AddSpacer(panel, 20f);
-            CreateButton(panel, "ПРОДОЛЖИТЬ / RESUME", () => SetPaused(false));
-            CreateButton(panel, "СОХРАНИТЬ CHECKPOINT / SAVE", SaveCheckpoint);
-            CreateButton(panel, "ЗАГРУЗИТЬ / LOAD", () => OpenLoadScreen(true));
-            CreateButton(panel, "НАСТРОЙКИ / SETTINGS", () => OpenSettings(true));
-            CreateButton(panel, "В ГЛАВНОЕ МЕНЮ / MAIN MENU", ShowMainMenu);
+            var panel = CreatePanel(pauseScreen.transform, 590f, 790f);
+            pauseTitleText = CreateLabel(panel, "", 42, FontStyle.Bold, 64f);
+            CreateButton(panel, "", () => SetPaused(false), out resumeText);
+            CreateButton(panel, "", SaveCheckpoint, out saveText);
+            CreateButton(panel, "", () => OpenLoadScreen(true), out pauseLoadText);
+            CreateButton(panel, "", () => OpenSettings(true), out pauseSettingsText);
+            CreateButton(panel, "", () => OpenHelpScreen(true), out helpButtonText);
+            CreateButton(panel, "", ResetCurrentLevel, out resetLevelText);
+            CreateButton(panel, "", ShowMainMenu, out mainMenuText);
         }
 
         private void BuildLoadMenu()
         {
-            var panel = CreatePanel(loadScreen.transform, 720f, 610f);
-            CreateLabel(panel, "ЗАГРУЗКА / LOAD GAME", 40, FontStyle.Bold, 76f);
-            loadInfoText = CreateLabel(panel, "", 20, FontStyle.Normal, 170f);
-            CreateButton(panel, "ЗАГРУЗИТЬ СЛОТ / LOAD SLOT", LoadSelectedSave);
-            CreateButton(panel, "УДАЛИТЬ СОХРАНЕНИЕ / DELETE SAVE", DeleteSelectedSave);
-            CreateButton(panel, "НАЗАД / BACK", CloseSubscreen);
+            var panel = CreatePanel(loadScreen.transform, 720f, 570f);
+            loadTitleText = CreateLabel(panel, "", 40, FontStyle.Bold, 68f);
+            loadInfoText = CreateLabel(panel, "", 20, FontStyle.Normal, 150f);
+            CreateButton(panel, "", LoadSelectedSave, out loadSlotText);
+            CreateButton(panel, "", DeleteSelectedSave, out deleteSaveText);
+            CreateButton(panel, "", CloseSubscreen, out backFromLoadText);
+        }
+
+        private void BuildHelpMenu()
+        {
+            var panel = CreatePanel(helpScreen.transform, 900f, 720f);
+            helpTitleText = CreateLabel(panel, "", 40, FontStyle.Bold, 68f);
+            helpBodyText = CreateLabel(panel, "", 19, FontStyle.Normal, 470f);
+            helpBodyText.alignment = TextAnchor.UpperLeft;
+            CreateButton(panel, "", CloseSubscreen, out backFromHelpText);
         }
 
         private void BuildSettingsMenu()
         {
-            var panel = CreatePanel(settingsScreen.transform, 760f, 850f);
-            CreateLabel(panel, "НАСТРОЙКИ / SETTINGS", 40, FontStyle.Bold, 72f);
-            AddSpacer(panel, 8f);
-            CreateButton(panel, "", () => AdjustVolume("master", 0.1f), out masterText);
-            CreateButton(panel, "", () => AdjustVolume("music", 0.1f), out musicText);
-            CreateButton(panel, "", () => AdjustVolume("sfx", 0.1f), out sfxText);
-            CreateButton(panel, "", ToggleFullscreen, out fullscreenText);
-            CreateButton(panel, "", ToggleVSync, out vsyncText);
-            CreateButton(panel, "", CycleResolution, out resolutionText);
-            AddSpacer(panel, 12f);
-            CreateLabel(panel, "Нажатие на громкость: +10%; после 100% → 0%. Music/SFX сохраняются как отдельные каналы и будут подключены к AudioMixer при добавлении аудио.", 16, FontStyle.Normal, 82f);
-            CreateButton(panel, "ПРИМЕНИТЬ / APPLY", ApplyAndCloseSettings);
-            CreateButton(panel, "СБРОСИТЬ / DEFAULTS", ResetSettings);
-            CreateButton(panel, "ОТМЕНА / CANCEL", CloseSettings);
+            var panel = CreatePanel(settingsScreen.transform, 820f, 900f);
+            settingsTitleText = CreateLabel(panel, "", 40, FontStyle.Bold, 62f);
+
+            masterSlider = CreateSliderRow(panel, out masterLabel, OnMasterChanged);
+            musicSlider = CreateSliderRow(panel, out musicLabel, OnMusicChanged);
+            sfxSlider = CreateSliderRow(panel, out sfxLabel, OnSfxChanged);
+
+            CreateButton(panel, "", ToggleFullscreen, out fullscreenText, 54f);
+            CreateButton(panel, "", ToggleVSync, out vsyncText, 54f);
+            CreateButton(panel, "", ToggleResolutionPopup, out resolutionText, 54f);
+            CreateButton(panel, "", ToggleEditingLanguage, out languageText, 54f);
+
+            AddSpacer(panel, 6f);
+            CreateButton(panel, "", ApplyAndCloseSettings, out applyText, 54f);
+            CreateButton(panel, "", ResetSettings, out defaultsText, 54f);
+            CreateButton(panel, "", CloseSettings, out cancelText, 54f);
+
+            BuildResolutionPopup();
         }
 
-        private void AdjustVolume(string channel, float step)
+        private Slider CreateSliderRow(Transform parent, out Text label, UnityEngine.Events.UnityAction<float> callback)
+        {
+            var row = new GameObject("Slider Row", typeof(RectTransform), typeof(LayoutElement));
+            row.transform.SetParent(parent, false);
+            row.GetComponent<LayoutElement>().preferredHeight = 70f;
+
+            label = CreateFreeText(row.transform, 18, FontStyle.Bold, TextAnchor.MiddleLeft);
+            var labelRect = label.rectTransform;
+            labelRect.anchorMin = new Vector2(0f, 0f);
+            labelRect.anchorMax = new Vector2(0.47f, 1f);
+            labelRect.offsetMin = new Vector2(4, 4);
+            labelRect.offsetMax = new Vector2(-8, -4);
+
+            var sliderGo = new GameObject("Slider", typeof(RectTransform), typeof(Slider));
+            sliderGo.transform.SetParent(row.transform, false);
+            var sliderRect = sliderGo.GetComponent<RectTransform>();
+            sliderRect.anchorMin = new Vector2(0.5f, 0.5f);
+            sliderRect.anchorMax = new Vector2(1f, 0.5f);
+            sliderRect.offsetMin = new Vector2(0, -12);
+            sliderRect.offsetMax = new Vector2(-4, 12);
+
+            var background = new GameObject("Background", typeof(RectTransform), typeof(Image));
+            background.transform.SetParent(sliderGo.transform, false);
+            Stretch(background.GetComponent<RectTransform>());
+            background.GetComponent<Image>().color = new Color(0.12f, 0.15f, 0.17f, 1f);
+
+            var fillArea = new GameObject("Fill Area", typeof(RectTransform));
+            fillArea.transform.SetParent(sliderGo.transform, false);
+            Stretch(fillArea.GetComponent<RectTransform>());
+            var fill = new GameObject("Fill", typeof(RectTransform), typeof(Image));
+            fill.transform.SetParent(fillArea.transform, false);
+            Stretch(fill.GetComponent<RectTransform>());
+            fill.GetComponent<Image>().color = new Color(0.52f, 0.82f, 0.88f, 1f);
+
+            var handleArea = new GameObject("Handle Slide Area", typeof(RectTransform));
+            handleArea.transform.SetParent(sliderGo.transform, false);
+            Stretch(handleArea.GetComponent<RectTransform>());
+            var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+            handle.transform.SetParent(handleArea.transform, false);
+            var handleRect = handle.GetComponent<RectTransform>();
+            handleRect.sizeDelta = new Vector2(22, 34);
+            handle.GetComponent<Image>().color = new Color(0.9f, 0.94f, 0.96f, 1f);
+
+            var slider = sliderGo.GetComponent<Slider>();
+            slider.minValue = 0f;
+            slider.maxValue = 1f;
+            slider.wholeNumbers = false;
+            slider.fillRect = fill.GetComponent<RectTransform>();
+            slider.handleRect = handleRect;
+            slider.targetGraphic = handle.GetComponent<Image>();
+            slider.onValueChanged.AddListener(callback);
+            return slider;
+        }
+
+        private void BuildResolutionPopup()
+        {
+            resolutionPopup = new GameObject("Resolution Popup", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
+            resolutionPopup.transform.SetParent(settingsScreen.transform, false);
+            var rect = resolutionPopup.GetComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(520f, 640f);
+            resolutionPopup.GetComponent<Image>().color = new Color(0.055f, 0.065f, 0.075f, 1f);
+            var layout = resolutionPopup.GetComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(18, 18, 18, 18);
+            layout.spacing = 8f;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandHeight = false;
+
+            foreach (var resolution in resolutions.Take(9))
+            {
+                var captured = resolution;
+                CreateButton(resolutionPopup.transform, $"{captured.Width} × {captured.Height}", () => SelectResolution(captured), 52f);
+            }
+            resolutionPopup.SetActive(false);
+        }
+
+        private void ToggleResolutionPopup()
+        {
+            if (resolutionPopup == null) return;
+            resolutionPopup.SetActive(!resolutionPopup.activeSelf);
+            if (resolutionPopup.activeSelf) resolutionPopup.transform.SetAsLastSibling();
+        }
+
+        private void SelectResolution((int Width, int Height) resolution)
         {
             if (editingSettings == null) return;
-            float Cycle(float value)
-            {
-                value += step;
-                return value > 1.001f ? 0f : Mathf.Round(value * 10f) / 10f;
-            }
-
-            switch (channel)
-            {
-                case "master": editingSettings.MasterVolume = Cycle(editingSettings.MasterVolume); break;
-                case "music": editingSettings.MusicVolume = Cycle(editingSettings.MusicVolume); break;
-                case "sfx": editingSettings.SfxVolume = Cycle(editingSettings.SfxVolume); break;
-            }
+            editingSettings.ResolutionWidth = resolution.Width;
+            editingSettings.ResolutionHeight = resolution.Height;
+            resolutionPopup.SetActive(false);
             RefreshSettingsLabels();
+        }
+
+        private void ToggleEditingLanguage()
+        {
+            if (editingSettings == null) return;
+            editingSettings.LanguageCode = IsRussian ? "en" : "ru";
+            RefreshLocalizedText();
+            RefreshSettingsLabels();
+            RefreshLoadInfo();
         }
 
         private void ToggleFullscreen()
         {
+            if (editingSettings == null) return;
             editingSettings.Fullscreen = !editingSettings.Fullscreen;
             RefreshSettingsLabels();
         }
 
         private void ToggleVSync()
         {
+            if (editingSettings == null) return;
             editingSettings.VSync = !editingSettings.VSync;
             RefreshSettingsLabels();
         }
 
-        private void CycleResolution()
+        private void OnMasterChanged(float value)
         {
-            if (resolutions.Count == 0) return;
-            resolutionIndex = (resolutionIndex + 1) % resolutions.Count;
-            editingSettings.ResolutionWidth = resolutions[resolutionIndex].Width;
-            editingSettings.ResolutionHeight = resolutions[resolutionIndex].Height;
+            if (editingSettings == null) return;
+            editingSettings.MasterVolume = value;
+            RefreshSettingsLabels();
+        }
+
+        private void OnMusicChanged(float value)
+        {
+            if (editingSettings == null) return;
+            editingSettings.MusicVolume = value;
+            RefreshSettingsLabels();
+        }
+
+        private void OnSfxChanged(float value)
+        {
+            if (editingSettings == null) return;
+            editingSettings.SfxVolume = value;
+            RefreshSettingsLabels();
+        }
+
+        private void PullSliderValues()
+        {
+            if (editingSettings == null) return;
+            editingSettings.MasterVolume = masterSlider.value;
+            editingSettings.MusicVolume = musicSlider.value;
+            editingSettings.SfxVolume = sfxSlider.value;
+        }
+
+        private void SyncSettingsControls()
+        {
+            if (editingSettings == null) return;
+            masterSlider.SetValueWithoutNotify(editingSettings.MasterVolume);
+            musicSlider.SetValueWithoutNotify(editingSettings.MusicVolume);
+            sfxSlider.SetValueWithoutNotify(editingSettings.SfxVolume);
             RefreshSettingsLabels();
         }
 
         private void RefreshSettingsLabels()
         {
             if (editingSettings == null) return;
-            if (masterText != null) masterText.text = $"ОБЩАЯ ГРОМКОСТЬ / MASTER: {Mathf.RoundToInt(editingSettings.MasterVolume * 100f)}%";
-            if (musicText != null) musicText.text = $"МУЗЫКА / MUSIC: {Mathf.RoundToInt(editingSettings.MusicVolume * 100f)}%";
-            if (sfxText != null) sfxText.text = $"ЭФФЕКТЫ / SFX: {Mathf.RoundToInt(editingSettings.SfxVolume * 100f)}%";
-            if (fullscreenText != null) fullscreenText.text = $"ПОЛНЫЙ ЭКРАН / FULLSCREEN: {(editingSettings.Fullscreen ? "ON" : "OFF")}";
-            if (vsyncText != null) vsyncText.text = $"VSYNC: {(editingSettings.VSync ? "ON" : "OFF")}";
-            if (resolutionText != null) resolutionText.text = $"РАЗРЕШЕНИЕ / RESOLUTION: {editingSettings.ResolutionWidth} × {editingSettings.ResolutionHeight}";
+            if (masterLabel != null) masterLabel.text = $"{L("Общая громкость", "Master volume")}: {Mathf.RoundToInt(editingSettings.MasterVolume * 100f)}%";
+            if (musicLabel != null) musicLabel.text = $"{L("Музыка", "Music")}: {Mathf.RoundToInt(editingSettings.MusicVolume * 100f)}%";
+            if (sfxLabel != null) sfxLabel.text = $"{L("Эффекты", "Effects")}: {Mathf.RoundToInt(editingSettings.SfxVolume * 100f)}%";
+            if (fullscreenText != null) fullscreenText.text = $"{L("Полный экран", "Fullscreen")}: {(editingSettings.Fullscreen ? L("ВКЛ", "ON") : L("ВЫКЛ", "OFF"))}";
+            if (vsyncText != null) vsyncText.text = $"VSync: {(editingSettings.VSync ? L("ВКЛ", "ON") : L("ВЫКЛ", "OFF"))}";
+            if (resolutionText != null) resolutionText.text = $"{L("Разрешение", "Resolution")}: {editingSettings.ResolutionWidth} × {editingSettings.ResolutionHeight}  ▼";
+            if (languageText != null) languageText.text = $"{L("Язык", "Language")}: {(IsRussian ? "Русский" : "English")}";
+        }
+
+        private void RefreshLocalizedText()
+        {
+            if (subtitleText != null) subtitleText.text = L("КОРПОРАТИВНЫЙ ТАБЛИЧНЫЙ КЛИЕНТ", "CORPORATE SPREADSHEET CLIENT");
+            if (newGameText != null) newGameText.text = L("НОВАЯ ИГРА", "NEW GAME");
+            if (loadButtonText != null) loadButtonText.text = L("ЗАГРУЗИТЬ", "LOAD");
+            if (settingsButtonText != null) settingsButtonText.text = L("НАСТРОЙКИ", "SETTINGS");
+            if (quitText != null) quitText.text = L("ВЫХОД", "QUIT");
+            if (pauseTitleText != null) pauseTitleText.text = L("МЕНЮ", "MENU");
+            if (resumeText != null) resumeText.text = L("ПРОДОЛЖИТЬ", "RESUME");
+            if (saveText != null) saveText.text = L("СОХРАНИТЬ", "SAVE");
+            if (pauseLoadText != null) pauseLoadText.text = L("ЗАГРУЗИТЬ", "LOAD");
+            if (pauseSettingsText != null) pauseSettingsText.text = L("НАСТРОЙКИ", "SETTINGS");
+            if (helpButtonText != null) helpButtonText.text = L("СПРАВКА", "HELP");
+            if (resetLevelText != null) resetLevelText.text = L("СБРОСИТЬ УРОВЕНЬ", "RESET LEVEL");
+            if (mainMenuText != null) mainMenuText.text = L("ГЛАВНОЕ МЕНЮ", "MAIN MENU");
+            if (settingsTitleText != null) settingsTitleText.text = L("НАСТРОЙКИ", "SETTINGS");
+            if (applyText != null) applyText.text = L("ПРИМЕНИТЬ", "APPLY");
+            if (defaultsText != null) defaultsText.text = L("ПО УМОЛЧАНИЮ", "DEFAULTS");
+            if (cancelText != null) cancelText.text = L("ОТМЕНА", "CANCEL");
+            if (loadTitleText != null) loadTitleText.text = L("ЗАГРУЗКА", "LOAD GAME");
+            if (loadSlotText != null) loadSlotText.text = L("ЗАГРУЗИТЬ СЛОТ", "LOAD SLOT");
+            if (deleteSaveText != null) deleteSaveText.text = L("УДАЛИТЬ СОХРАНЕНИЕ", "DELETE SAVE");
+            if (backFromLoadText != null) backFromLoadText.text = L("НАЗАД", "BACK");
+            if (helpTitleText != null) helpTitleText.text = L("СПРАВКА", "HELP");
+            if (backFromHelpText != null) backFromHelpText.text = L("НАЗАД", "BACK");
+            if (helpBodyText != null)
+            {
+                helpBodyText.text = L(
+                    "Основные действия:\n\n• SORT собирает данные вокруг выбранного ключа.\n• SUM работает с непрерывным диапазоном минимум из двух чисел.\n• CUT / PASTE позволяют перестраивать лист.\n• DELETE удаляет клетку и может локализовать #REF!.\n• SUBMIT проверяет заполненный отчёт.\n\n#REF! заранее показывает следующую цель. Планируйте действия так, чтобы сохранить данные, необходимые для отчёта.\n\nEsc или кнопка МЕНЮ открывают системное меню.",
+                    "Core actions:\n\n• SORT assembles data around the selected key.\n• SUM works on a contiguous range containing at least two numbers.\n• CUT / PASTE restructure the worksheet.\n• DELETE destroys a cell and can quarantine #REF!.\n• SUBMIT checks the completed report.\n\n#REF! telegraphs its next target. Plan around the threat and preserve report-critical data.\n\nEsc or the MENU button opens the system menu.");
+            }
+            RefreshContinueState();
+            RefreshSettingsLabels();
         }
 
         private void BuildResolutionList()
@@ -427,25 +675,22 @@ namespace ExcelHell.Application
                 var pair = (resolution.width, resolution.height);
                 if (!resolutions.Contains(pair)) resolutions.Add(pair);
             }
-            if (resolutions.Count == 0) resolutions.Add((Screen.currentResolution.width, Screen.currentResolution.height));
-        }
 
-        private void SyncResolutionIndex()
-        {
-            if (editingSettings == null || resolutions.Count == 0) return;
-            var found = resolutions.FindIndex(r => r.Width == editingSettings.ResolutionWidth && r.Height == editingSettings.ResolutionHeight);
-            resolutionIndex = found >= 0 ? found : resolutions.Count - 1;
-            var resolution = resolutions[resolutionIndex];
-            editingSettings.ResolutionWidth = resolution.Width;
-            editingSettings.ResolutionHeight = resolution.Height;
+            var current = (Screen.currentResolution.width, Screen.currentResolution.height);
+            if (!resolutions.Contains(current)) resolutions.Add(current);
+
+            resolutions.Sort((a, b) =>
+            {
+                var area = (b.Width * b.Height).CompareTo(a.Width * a.Height);
+                return area != 0 ? area : b.Width.CompareTo(a.Width);
+            });
         }
 
         private GameObject CreateScreen(string name, Color background)
         {
             var screen = new GameObject(name, typeof(RectTransform), typeof(Image));
             screen.transform.SetParent(canvas.transform, false);
-            var rect = screen.GetComponent<RectTransform>();
-            Stretch(rect);
+            Stretch(screen.GetComponent<RectTransform>());
             screen.GetComponent<Image>().color = background;
             screen.SetActive(false);
             return screen;
@@ -453,16 +698,17 @@ namespace ExcelHell.Application
 
         private Transform CreatePanel(Transform parent, float width, float height)
         {
-            var panel = new GameObject("Panel", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+            var panel = new GameObject("Panel", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
             panel.transform.SetParent(parent, false);
             var rect = panel.GetComponent<RectTransform>();
             rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
             rect.sizeDelta = new Vector2(width, height);
             panel.GetComponent<Image>().color = new Color(0.08f, 0.095f, 0.105f, 0.98f);
             var layout = panel.GetComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(36, 36, 34, 34);
-            layout.spacing = 12f;
+            layout.padding = new RectOffset(36, 36, 28, 28);
+            layout.spacing = 10f;
             layout.childAlignment = TextAnchor.UpperCenter;
             layout.childControlWidth = true;
             layout.childForceExpandWidth = true;
@@ -473,31 +719,37 @@ namespace ExcelHell.Application
 
         private Text CreateLabel(Transform parent, string value, int size, FontStyle style, float height)
         {
-            var go = new GameObject("Label", typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+            var text = CreateFreeText(parent, size, style, TextAnchor.MiddleCenter);
+            text.text = value;
+            text.gameObject.AddComponent<LayoutElement>().preferredHeight = height;
+            return text;
+        }
+
+        private Text CreateFreeText(Transform parent, int size, FontStyle style, TextAnchor alignment)
+        {
+            var go = new GameObject("Text", typeof(RectTransform), typeof(Text));
             go.transform.SetParent(parent, false);
             var text = go.GetComponent<Text>();
             text.font = font;
             text.fontSize = size;
             text.fontStyle = style;
-            text.alignment = TextAnchor.MiddleCenter;
+            text.alignment = alignment;
             text.color = new Color(0.92f, 0.95f, 0.96f, 1f);
-            text.text = value;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
-            go.GetComponent<LayoutElement>().preferredHeight = height;
             return text;
         }
 
-        private Button CreateButton(Transform parent, string label, Action callback)
+        private Button CreateButton(Transform parent, string label, Action callback, float height = 62f)
         {
-            return CreateButton(parent, label, callback, out _);
+            return CreateButton(parent, label, callback, out _, height);
         }
 
-        private Button CreateButton(Transform parent, string label, Action callback, out Text labelText)
+        private Button CreateButton(Transform parent, string label, Action callback, out Text labelText, float height = 62f)
         {
             var go = new GameObject("Button", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
             go.transform.SetParent(parent, false);
-            go.GetComponent<LayoutElement>().preferredHeight = 62f;
+            go.GetComponent<LayoutElement>().preferredHeight = height;
             var image = go.GetComponent<Image>();
             image.color = new Color(0.14f, 0.18f, 0.2f, 1f);
             var button = go.GetComponent<Button>();
@@ -509,18 +761,10 @@ namespace ExcelHell.Application
             button.colors = colors;
             button.onClick.AddListener(() => callback?.Invoke());
 
-            var textGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
-            textGo.transform.SetParent(go.transform, false);
-            var textRect = textGo.GetComponent<RectTransform>();
-            Stretch(textRect);
-            textRect.offsetMin = new Vector2(12, 4);
-            textRect.offsetMax = new Vector2(-12, -4);
-            labelText = textGo.GetComponent<Text>();
-            labelText.font = font;
-            labelText.fontSize = 20;
-            labelText.fontStyle = FontStyle.Bold;
-            labelText.alignment = TextAnchor.MiddleCenter;
-            labelText.color = Color.white;
+            labelText = CreateFreeText(go.transform, 20, FontStyle.Bold, TextAnchor.MiddleCenter);
+            Stretch(labelText.rectTransform);
+            labelText.rectTransform.offsetMin = new Vector2(12, 4);
+            labelText.rectTransform.offsetMax = new Vector2(-12, -4);
             labelText.text = label;
             return button;
         }
@@ -559,7 +803,8 @@ namespace ExcelHell.Application
                 Fullscreen = source.Fullscreen,
                 VSync = source.VSync,
                 ResolutionWidth = source.ResolutionWidth,
-                ResolutionHeight = source.ResolutionHeight
+                ResolutionHeight = source.ResolutionHeight,
+                LanguageCode = source.LanguageCode
             };
         }
 
@@ -574,7 +819,7 @@ namespace ExcelHell.Application
 #if UNITY_EDITOR
             Debug.Log("EXEL HELL: Quit requested (ignored in editor).");
 #else
-            Application.Quit();
+            UnityEngine.Application.Quit();
 #endif
         }
     }
