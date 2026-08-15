@@ -20,11 +20,13 @@ namespace ExcelHell.Prototype
         public int RespawnDelayTurns = 2;
         public int ActiveOutbreakDelayTurns = 3;
 
-        public float DurationSeconds = 300f;
-        public float AnomalyStepSeconds = 20f;
-        public float FirstOutbreakDelaySeconds = 60f;
-        public float RespawnDelaySeconds = 40f;
-        public float ActiveOutbreakDelaySeconds = 60f;
+        // Realtime defaults are intentionally aggressive enough that a practiced player
+        // still sees the anomaly before finishing the worksheet.
+        public float DurationSeconds = 270f;
+        public float AnomalyStepSeconds = 10f;
+        public float FirstOutbreakDelaySeconds = 30f;
+        public float RespawnDelaySeconds = 20f;
+        public float ActiveOutbreakDelaySeconds = 30f;
 
         public int CorruptionStepsBeforeDestroy = 2;
         public int SpawnPreferredDistance = 2;
@@ -44,7 +46,7 @@ namespace ExcelHell.Prototype
                 ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.OvertimeTotal,
                 RefEnabled = false,
                 MaxTurns = 10,
-                DurationSeconds = 300f
+                DurationSeconds = 270f
             },
             new PrototypeLevelConfig
             {
@@ -57,11 +59,11 @@ namespace ExcelHell.Prototype
                 FirstOutbreakTurn = 3,
                 RespawnDelayTurns = 2,
                 ActiveOutbreakDelayTurns = 3,
-                DurationSeconds = 300f,
-                FirstOutbreakDelaySeconds = 90f,
-                AnomalyStepSeconds = 20f,
-                RespawnDelaySeconds = 50f,
-                ActiveOutbreakDelaySeconds = 75f
+                DurationSeconds = 270f,
+                FirstOutbreakDelaySeconds = 45f,
+                AnomalyStepSeconds = 10f,
+                RespawnDelaySeconds = 25f,
+                ActiveOutbreakDelaySeconds = 38f
             },
             new PrototypeLevelConfig
             {
@@ -74,11 +76,11 @@ namespace ExcelHell.Prototype
                 FirstOutbreakTurn = 2,
                 RespawnDelayTurns = 2,
                 ActiveOutbreakDelayTurns = 3,
-                DurationSeconds = 300f,
-                FirstOutbreakDelaySeconds = 60f,
-                AnomalyStepSeconds = 18f,
-                RespawnDelaySeconds = 40f,
-                ActiveOutbreakDelaySeconds = 60f
+                DurationSeconds = 270f,
+                FirstOutbreakDelaySeconds = 30f,
+                AnomalyStepSeconds = 9f,
+                RespawnDelaySeconds = 20f,
+                ActiveOutbreakDelaySeconds = 30f
             }
         };
 
