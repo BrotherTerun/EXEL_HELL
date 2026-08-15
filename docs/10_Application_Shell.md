@@ -16,13 +16,18 @@ Add the reusable game-level boilerplate around the existing turn-based prototype
 
 ## Persistence backend
 
-The branch integrates **BayatGames / Save Game Free** as a pinned UPM git dependency:
+The first integration attempt used **BayatGames / Save Game Free** as a pinned UPM git dependency. Manual Unity verification exposed a packaging incompatibility: the package subtree contains an `.npmignore` rule excluding `*.meta`, so Unity resolves the immutable Git package without the metadata required to import its runtime assembly. Unity then ignores the package assets and `Bayat.Unity.SaveGameFree` is unavailable to compilation.
 
-`https://github.com/BayatGames/SaveGameFree.git?path=/Assets/BayatGames/SaveGameFree#1a1a4c4e9873667272a5fc889b27429e4c09cdd7`
+Decision: remove that runtime dependency rather than require a manual ZIP import or maintain a fork for two small JSON documents.
 
-The package declares Unity `6000.0` compatibility and MIT licensing. The source and license are recorded in `THIRD_PARTY_NOTICES.md`.
+`AppPersistence` now uses Unity/.NET built-ins only:
 
-`AppPersistence` owns two independent documents:
+- `JsonUtility` for serialization;
+- `Application.persistentDataPath` as the save root;
+- `System.IO` for directory/file operations;
+- write-to-`.tmp` then replace for a simple safer-write path.
+
+Files are stored under the application's persistent data directory in `Saves/`:
 
 - `excel_hell_progress.json`
 - `excel_hell_settings.json`
@@ -110,8 +115,8 @@ Decision: reuse the screen-stack pattern, not the package. Reconsider it only if
 
 This environment cannot launch Unity, so the branch is not considered production-ready until these are checked in the editor/build:
 
-1. package manager resolves SaveGameFree from the pinned git/path dependency;
-2. no compile errors after package resolution;
+1. project refreshes with no SaveGameFree package warnings/errors;
+2. no compile errors after refresh;
 3. build opens on Main Menu rather than exposing the prototype underneath it;
 4. New Game starts level 1;
 5. Esc opens Pause and Resume returns to the same puzzle state;
