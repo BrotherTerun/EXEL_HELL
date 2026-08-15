@@ -14,7 +14,7 @@ namespace ExcelHell.Prototype
         {
             [PrototypeLanguage.Russian] = new Dictionary<string, string>
             {
-                ["ui.title"] = "EXCEL HELL // MVP 0.4",
+                ["ui.title"] = "EXCEL HELL // MVP 0.5",
                 ["ui.reportTask"] = "ЗАДАЧА ОТЧЁТА",
                 ["ui.sum"] = "SUM",
                 ["ui.sort"] = "SORT",
@@ -31,7 +31,7 @@ namespace ExcelHell.Prototype
                 ["ui.refNoPath"] = "#REF! изолирован — ожидается следующая вспышка",
                 ["ui.refSpawn"] = "НОВЫЙ #REF! → {0} через {1} ход(а)",
                 ["ui.spill"] = "#SPILL! Недостаточно непрерывного свободного места.",
-                ["ui.select"] = "Выберите данные или ключ. SORT собирает связанную группу; SUM работает минимум с двумя числами.",
+                ["ui.select"] = "Выделите аргумент и активируйте =SORT() или =SUM() прямо на поле.",
                 ["ui.sumNeedRange"] = "SUM нужен выделенный диапазон минимум с двумя числами.",
                 ["ui.sumNeedTwo"] = "SUM требует минимум две числовые клетки; обычные пустые клетки игнорируются.",
                 ["ui.sumInvalid"] = "SUM игнорирует обычные пустые клетки, но не проходит через #REF!, Destroyed, ключи или подписи.",
@@ -58,7 +58,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "ОТЧЁТ ОТКЛОНЁН: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "В Config не выбрано ни одной задачи отчёта.",
-                ["ui.help"] = "Зелёные клетки — защищённые поля отчёта. SORT собирает данные вокруг выбранного ключа.\nSUM игнорирует обычные пустые клетки; #REF!/Destroyed ломают диапазон. На листе SUM поглощает числа, а прямо в отчёт сохраняет источники.\nSUBMIT проверяет только итоговые числа. DELETE локализует #REF!, но оставляет уничтоженную клетку, а не пустую.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
+                ["ui.help"] = "Формульные клетки — инфраструктура листа: выделите аргумент и кликните =SORT() или =SUM().\nSORT переносит связанные данные вниз для параметра и вправо для сотрудника. SUM схлопывает числа в свою клетку; CUT результата снова оставляет пустое =SUM().\nЗелёные report-SUM проверяются через SUBMIT, но не защищены от #REF!. Формулы нельзя удалить вручную.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
 
                 ["record.ivanov"] = "Иванов",
                 ["record.petrov"] = "Петров",
@@ -79,7 +79,7 @@ namespace ExcelHell.Prototype
             },
             [PrototypeLanguage.English] = new Dictionary<string, string>
             {
-                ["ui.title"] = "EXCEL HELL // MVP 0.4",
+                ["ui.title"] = "EXCEL HELL // MVP 0.5",
                 ["ui.reportTask"] = "REPORT TASK",
                 ["ui.sum"] = "SUM",
                 ["ui.sort"] = "SORT",
@@ -96,7 +96,7 @@ namespace ExcelHell.Prototype
                 ["ui.refNoPath"] = "#REF! isolated — waiting for the next outbreak",
                 ["ui.refSpawn"] = "NEW #REF! → {0} in {1} turn(s)",
                 ["ui.spill"] = "#SPILL! Not enough contiguous free space.",
-                ["ui.select"] = "Select data or a key. SORT assembles a semantic group; SUM needs at least two numbers.",
+                ["ui.select"] = "Select an argument, then activate =SORT() or =SUM() directly on the worksheet.",
                 ["ui.sumNeedRange"] = "SUM needs a selected range containing at least two numbers.",
                 ["ui.sumNeedTwo"] = "SUM requires at least two numeric cells; normal blanks are ignored.",
                 ["ui.sumInvalid"] = "SUM ignores normal blanks, but cannot cross #REF!, Destroyed cells, keys, or labels.",
@@ -123,7 +123,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "REPORT REJECTED: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "No report goals selected in Config.",
-                ["ui.help"] = "Green cells are protected report targets. SORT assembles data around the selected key.\nSUM ignores normal blanks; #REF!/Destroyed cells break the range. Worksheet SUM consumes numeric sources; report-target SUM preserves them.\nSUBMIT checks final numbers only. DELETE quarantines #REF!, but leaves a destroyed cell rather than a blank.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
+                ["ui.help"] = "Formula cells are worksheet infrastructure: select an argument, then click =SORT() or =SUM().\nSORT moves linked data down for a field key and right for an employee key. SUM collapses numbers into its own cell; CUTting the result reveals reusable =SUM().\nGreen report SUM cells are checked by SUBMIT but are still vulnerable to #REF!. Formula fields cannot be deleted manually.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
 
                 ["record.ivanov"] = "Ivanov",
                 ["record.petrov"] = "Petrov",
