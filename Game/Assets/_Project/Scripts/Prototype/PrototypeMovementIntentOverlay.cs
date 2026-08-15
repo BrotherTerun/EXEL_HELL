@@ -34,6 +34,9 @@ namespace ExcelHell.Prototype
             if (current == null)
             {
                 HideActive();
+                prototype = null;
+                currentIntentField = null;
+                overlays.Clear();
                 return;
             }
 
@@ -54,11 +57,11 @@ namespace ExcelHell.Prototype
             }
 
             var address = ExcelHellPrototype.ColumnName(intent.Value.TargetColumn) + (intent.Value.TargetRow + 1);
-            if (activeAddress == address)
+            if (activeAddress == address && overlays.TryGetValue(address, out var activeOverlay) && activeOverlay != null)
                 return;
 
             HideActive();
-            if (overlays.TryGetValue(address, out var overlay))
+            if (overlays.TryGetValue(address, out var overlay) && overlay != null)
             {
                 overlay.enabled = true;
                 activeAddress = address;
@@ -99,8 +102,13 @@ namespace ExcelHell.Prototype
 
         private void HideActive()
         {
-            if (!string.IsNullOrEmpty(activeAddress) && overlays.TryGetValue(activeAddress, out var overlay))
+            if (!string.IsNullOrEmpty(activeAddress) &&
+                overlays.TryGetValue(activeAddress, out var overlay) &&
+                overlay != null)
+            {
                 overlay.enabled = false;
+            }
+
             activeAddress = null;
         }
     }
