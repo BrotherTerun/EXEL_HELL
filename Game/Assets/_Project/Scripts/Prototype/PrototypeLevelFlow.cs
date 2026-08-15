@@ -21,7 +21,8 @@ namespace ExcelHell.Prototype
         private static void Bootstrap()
         {
             if (FindFirstObjectByType<PrototypeLevelFlow>() != null) return;
-            DontDestroyOnLoad(new GameObject("EXEL HELL Level Flow").AddComponent<PrototypeLevelFlow>());
+            var flow = new GameObject("EXEL HELL Level Flow").AddComponent<PrototypeLevelFlow>();
+            DontDestroyOnLoad(flow.gameObject);
         }
 
         private void LateUpdate()
@@ -30,12 +31,12 @@ namespace ExcelHell.Prototype
                 prototype = FindFirstObjectByType<ExcelHellPrototype>();
             if (prototype == null) return;
 
-            // Level 1 deliberately teaches spreadsheet actions without gameplay anomalies.
             if (!PrototypeLevelRuntime.Current.RefEnabled)
             {
                 PendingSpawnField?.SetValue(prototype, null);
                 CurrentIntentField?.SetValue(prototype, null);
-                if (IntentTextField?.GetValue(prototype) is Text intentText)
+                var intentText = IntentTextField?.GetValue(prototype) as Text;
+                if (intentText != null)
                     intentText.text = "АНОМАЛИЙ НЕТ / NO ANOMALIES";
             }
         }
@@ -43,7 +44,8 @@ namespace ExcelHell.Prototype
         private bool ReportAccepted()
         {
             if (prototype == null) return false;
-            if (StatusTextField?.GetValue(prototype) is not Text statusText) return false;
+            var statusText = StatusTextField?.GetValue(prototype) as Text;
+            if (statusText == null) return false;
             var text = statusText.text ?? string.Empty;
             return text.IndexOf("ОТЧЁТ ПРИНЯТ", StringComparison.OrdinalIgnoreCase) >= 0 ||
                    text.IndexOf("REPORT ACCEPTED", StringComparison.OrdinalIgnoreCase) >= 0;
