@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using ExcelHell.Application;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -17,19 +18,29 @@ namespace ExcelHell.Prototype
         private ExcelHellPrototype prototype;
         private GUIStyle labelStyle;
         private GUIStyle buttonStyle;
+        private bool completionSaved;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
             if (FindFirstObjectByType<PrototypeLevelFlow>() != null) return;
-            var flow = new GameObject("EXCEL HELL Level Flow").AddComponent<PrototypeLevelFlow>();
+            var flow = new GameObject("EXEL HELL Level Flow").AddComponent<PrototypeLevelFlow>();
             DontDestroyOnLoad(flow.gameObject);
         }
 
         private void LateUpdate()
         {
+            if (ExcelHellApplication.ShellAvailable && !ExcelHellApplication.GameplayActive)
+            {
+                prototype = null;
+                return;
+            }
+
             if (prototype == null)
+            {
                 prototype = FindFirstObjectByType<ExcelHellPrototype>();
+                completionSaved = false;
+            }
             if (prototype == null) return;
 
             if (!PrototypeLevelRuntime.Current.RefEnabled)
@@ -41,6 +52,12 @@ namespace ExcelHell.Prototype
 
                 var intentText = IntentTextField?.GetValue(prototype) as Text;
                 if (intentText != null) intentText.text = "АНОМАЛИЙ НЕТ / NO ANOMALIES";
+            }
+
+            if (!completionSaved && PrototypeLevelRuntime.IsLast && ReportAccepted())
+            {
+                completionSaved = true;
+                ExcelHellApplication.NotifyCampaignCompleted(PrototypeLevelRuntime.CurrentIndex);
             }
         }
 
@@ -55,6 +72,8 @@ namespace ExcelHell.Prototype
 
         private void OnGUI()
         {
+            if (ExcelHellApplication.ShellAvailable && !ExcelHellApplication.GameplayActive) return;
+
             EnsureStyles();
             var level = PrototypeLevelRuntime.Current;
             GUI.Label(new Rect(18, Screen.height - 48, 820, 34), $"УРОВЕНЬ {PrototypeLevelRuntime.CurrentIndex + 1}/{PrototypeLevelCatalog.Count}: {level.NameRu}  /  {level.NameEn}", labelStyle);
@@ -69,10 +88,12 @@ namespace ExcelHell.Prototype
             if (GUI.Button(new Rect(Screen.width - 360, Screen.height - 58, 340, 42), "СЛЕДУЮЩИЙ УРОВЕНЬ / NEXT LEVEL", buttonStyle))
             {
                 if (!PrototypeLevelRuntime.Advance()) return;
+                ExcelHellApplication.NotifyLevelAdvanced(PrototypeLevelRuntime.CurrentIndex);
                 var old = prototype;
                 prototype = null;
+                completionSaved = false;
                 Destroy(old.gameObject);
-                new GameObject("EXCEL HELL Prototype").AddComponent<ExcelHellPrototype>();
+                new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
             }
         }
 

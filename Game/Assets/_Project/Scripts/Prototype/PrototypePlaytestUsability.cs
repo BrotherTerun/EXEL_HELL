@@ -2,14 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using ExcelHell.Application;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Playtest-facing usability layer. Keeps the corrected SUM rules and exposes an always-available
-    /// reference guide. First-time onboarding is handled separately by PrototypeContextualTutorial.
+    /// Playtest-facing usability layer. Keeps the corrected SUM rules. The legacy IMGUI reference
+    /// guide remains available when the prototype runs standalone, but the application shell owns
+    /// help/navigation in production flow.
     /// </summary>
     public sealed class PrototypePlaytestUsability : MonoBehaviour
     {
@@ -47,6 +49,9 @@ namespace ExcelHell.Prototype
             var current = FindFirstObjectByType<ExcelHellPrototype>();
             if (current != prototype)
                 Bind(current);
+
+            if (ExcelHellApplication.ShellAvailable && referenceVisible)
+                CloseReference();
 
             TutorialOpen = referenceVisible && prototype != null;
             SetSpreadsheetInput(!TutorialOpen);
@@ -150,6 +155,7 @@ namespace ExcelHell.Prototype
 
         private void OnGUI()
         {
+            if (ExcelHellApplication.ShellAvailable) return;
             EnsureStyles();
             if (prototype == null) return;
 

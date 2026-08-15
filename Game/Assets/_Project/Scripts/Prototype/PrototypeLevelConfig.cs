@@ -178,6 +178,11 @@ namespace ExcelHell.Prototype
             CurrentIndex = 0;
         }
 
+        public static void SetCurrentIndex(int index)
+        {
+            CurrentIndex = Mathf.Clamp(index, 0, PrototypeLevelCatalog.Count - 1);
+        }
+
         public static bool Advance()
         {
             if (IsLast) return false;
