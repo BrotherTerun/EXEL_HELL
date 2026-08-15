@@ -10,7 +10,7 @@ namespace ExcelHell.EditorTools
         [MenuItem("EXCEL HELL/Build/Windows Turn-Based Playtest")]
         public static void BuildWindowsPlaytest()
         {
-            var projectRoot = Directory.GetParent(Application.dataPath)?.FullName ?? ".";
+            var projectRoot = Directory.GetParent(UnityEngine.Application.dataPath)?.FullName ?? ".";
             var outputDir = Path.Combine(projectRoot, "Builds", "EXCEL_HELL_TurnBased");
             Directory.CreateDirectory(outputDir);
             var outputPath = Path.Combine(outputDir, "EXCEL_HELL_TurnBased.exe");
