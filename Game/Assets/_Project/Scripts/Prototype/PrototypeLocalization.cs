@@ -49,6 +49,7 @@ namespace ExcelHell.Prototype
                 ["ui.pasteDone"] = "Вставлено в {0}.",
                 ["ui.deleteNeed"] = "УДАЛИТЬ требует одну клетку.",
                 ["ui.deleteDone"] = "Клетка {0} уничтожена.",
+                ["ui.deleteReportProtected"] = "Структуру отчёта удалить нельзя.",
                 ["ui.quarantineDone"] = "Очаг #REF! в {0} помещён в карантин. Распад документа продолжается.",
                 ["ui.finishSum"] = "Сначала выберите клетку для результата SUM.",
                 ["ui.finished"] = "Уровень завершён. Нажмите СБРОС.",
@@ -57,7 +58,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "ОТЧЁТ ОТКЛОНЁН: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "В Config не выбрано ни одной задачи отчёта.",
-                ["ui.help"] = "Зелёные клетки — поля отчёта. SORT собирает связанные данные.\nSUM в таблице поглощает диапазон; SUM прямо в отчёт считает ответ без уничтожения источников.\nSUBMIT проверяет только итоговые числа. DELETE локализует один #REF!, но вспышки продолжаются.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
+                ["ui.help"] = "Зелёные клетки — защищённые поля отчёта. SORT собирает связанные данные.\nSUM в таблице поглощает диапазон; SUM прямо в отчёт считает ответ без уничтожения источников.\nSUBMIT проверяет только итоговые числа. DELETE локализует один #REF!, но не может уничтожить структуру отчёта.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
 
                 ["record.ivanov"] = "Иванов",
                 ["record.petrov"] = "Петров",
@@ -113,6 +114,7 @@ namespace ExcelHell.Prototype
                 ["ui.pasteDone"] = "Pasted into {0}.",
                 ["ui.deleteNeed"] = "DELETE needs one cell.",
                 ["ui.deleteDone"] = "Cell {0} destroyed.",
+                ["ui.deleteReportProtected"] = "Report structure cannot be deleted.",
                 ["ui.quarantineDone"] = "#REF! at {0} quarantined. Document decay continues.",
                 ["ui.finishSum"] = "Finish SUM by picking its result cell.",
                 ["ui.finished"] = "Run finished. Press RESET.",
@@ -121,7 +123,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "REPORT REJECTED: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "No report goals selected in Config.",
-                ["ui.help"] = "Green cells are report targets. SORT assembles related data.\nSUM in worksheet space consumes its range; SUM directly into a report cell calculates without consuming sources.\nSUBMIT checks final numbers only. DELETE quarantines one #REF!, but outbreaks continue.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
+                ["ui.help"] = "Green cells are protected report targets. SORT assembles related data.\nSUM in worksheet space consumes its range; SUM directly into a report cell calculates without consuming sources.\nSUBMIT checks final numbers only. DELETE quarantines one #REF!, but cannot destroy report structure.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
 
                 ["record.ivanov"] = "Ivanov",
                 ["record.petrov"] = "Petrov",
