@@ -32,9 +32,14 @@ namespace ExcelHell.Prototype
         private List<CellModel> pendingSumSources;
         private double pendingSum;
         private ContentToken clipboard;
-        private int turn;
         private bool finished;
         private int aggregateCounter;
+        private int actionCount;
+
+        private float elapsedSeconds;
+        private float remainingSeconds;
+        private float pendingSpawnExecuteAt = float.PositiveInfinity;
+        private float movementExecuteAt = float.PositiveInfinity;
 
         private AnomalyIntent? currentIntent;
         private SpawnIntent? pendingSpawnIntent;
@@ -71,6 +76,7 @@ namespace ExcelHell.Prototype
             reportColumn = columns - 1;
             cells = new CellModel[rows, columns];
             views = new ExcelHellCellView[rows, columns];
+            remainingSeconds = config.SafeLevelDurationSeconds;
 
             EnsureEventSystem();
             BuildModel();
@@ -80,6 +86,42 @@ namespace ExcelHell.Prototype
             RefreshAll();
             Canvas.ForceUpdateCanvases();
             SetStatus(goals.Count == 0 ? "ui.noGoals" : "ui.select");
+        }
+
+        private void Update()
+        {
+            if (finished) return;
+
+            elapsedSeconds += Time.unscaledDeltaTime;
+            remainingSeconds = Mathf.Max(0f, config.SafeLevelDurationSeconds - elapsedSeconds);
+
+            if (remainingSeconds <= 0f)
+            {
+                finished = true;
+                statusText.text = loc.Get("ui.deadline");
+                RefreshAll();
+                return;
+            }
+
+            RevalidateMovementIntent();
+
+            if (pendingSpawnIntent.HasValue && elapsedSeconds >= pendingSpawnExecuteAt)
+            {
+                var spawned = TrySpawnPendingOutbreak();
+                if (spawned)
+                {
+                    GenerateIntent();
+                    movementExecuteAt = currentIntent.HasValue
+                        ? elapsedSeconds + config.SafeAnomalyStepSeconds
+                        : float.PositiveInfinity;
+                    ScheduleNextOutbreak(config.SafeActiveOutbreakDelaySeconds);
+                }
+            }
+
+            if (currentIntent.HasValue && elapsedSeconds >= movementExecuteAt)
+                ResolveRealtimeAnomalyStep();
+
+            RefreshRealtimeLabels();
         }
 
         private void EnsureEventSystem()
@@ -113,7 +155,6 @@ namespace ExcelHell.Prototype
             Place(0, reportColumn, ContentToken.Label("report.label", "label.report"));
             BuildReportGoals();
 
-            // MVP 0.4: fresh values to remove memorized answers from repeated MVP 0.3 playtests.
             var values = new Dictionary<string, double[]>
             {
                 ["hours"] = new[] { 38d, 42d, 35d, 47d, 39d },
@@ -208,14 +249,16 @@ namespace ExcelHell.Prototype
             currentIntent = null;
             pendingSpawnIntent = null;
             spawnSequence = 0;
-            ScheduleNextOutbreak(config.SafeActivationTurn == 0 ? 1 : config.SafeActivationTurn);
+            movementExecuteAt = float.PositiveInfinity;
+            ScheduleNextOutbreak(config.SafeFirstOutbreakDelaySeconds);
         }
 
-        private bool ScheduleNextOutbreak(int delay)
+        private bool ScheduleNextOutbreak(float delaySeconds)
         {
             if (pendingSpawnIntent.HasValue) return false;
             if (!TryChooseDynamicSpawnCell(out var spawn)) return false;
-            pendingSpawnIntent = new SpawnIntent(spawn.Row, spawn.Column, Mathf.Max(1, delay));
+            pendingSpawnIntent = new SpawnIntent(spawn.Row, spawn.Column, 0);
+            pendingSpawnExecuteAt = elapsedSeconds + Mathf.Max(0.1f, delaySeconds);
             return true;
         }
 
@@ -223,7 +266,6 @@ namespace ExcelHell.Prototype
         {
             result = null;
 
-            // Only live report-critical data are primary anchors. Report interface cells never host an outbreak.
             var anchors = cells.Cast<CellModel>()
                 .Where(cell => cell.State != CellState.Destroyed && cell.Occupant?.IsRequiredSource == true)
                 .ToList();
@@ -265,7 +307,7 @@ namespace ExcelHell.Prototype
             {
                 var anchorText = string.Join(", ", anchors.Select(a => $"{a.Address}:{a.Occupant?.Id}"));
                 var poolText = string.Join(", ", pool.Select(p => $"{p.Cell.Address}:d{p.Distance}"));
-                Debug.Log($"EXEL HELL #REF! SPAWN goals={(int)config.reportGoals} seq={spawnSequence} chosen={result.Address} d={chosen.Distance} anchors=[{anchorText}] pool=[{poolText}]");
+                Debug.Log($"EXEL HELL #REF! SPAWN realtime goals={(int)config.reportGoals} seq={spawnSequence} chosen={result.Address} d={chosen.Distance} anchors=[{anchorText}] pool=[{poolText}]");
             }
 
             spawnSequence++;
@@ -297,14 +339,96 @@ namespace ExcelHell.Prototype
             if (spawn.State != CellState.Normal || spawn.Occupant?.IsRequiredSource == true || IsReportInterfaceCell(spawn.Row, spawn.Column))
             {
                 pendingSpawnIntent = null;
-                ScheduleNextOutbreak(1);
+                pendingSpawnExecuteAt = float.PositiveInfinity;
+                ScheduleNextOutbreak(Mathf.Min(5f, config.SafeAnomalyStepSeconds));
                 return false;
             }
 
             pendingSpawnIntent = null;
+            pendingSpawnExecuteAt = float.PositiveInfinity;
             spawn.State = CellState.Corrupted;
             spawn.CorruptionAge = 0;
             return true;
+        }
+
+        private void RevalidateMovementIntent()
+        {
+            if (!currentIntent.HasValue || IsIntentValid(currentIntent.Value)) return;
+
+            var hasActiveRef = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
+            if (!hasActiveRef)
+            {
+                currentIntent = null;
+                movementExecuteAt = float.PositiveInfinity;
+                if (pendingSpawnIntent.HasValue)
+                {
+                    pendingSpawnIntent = null;
+                    pendingSpawnExecuteAt = float.PositiveInfinity;
+                }
+                ScheduleNextOutbreak(config.SafeRespawnDelaySeconds);
+                RefreshAll();
+                return;
+            }
+
+            GenerateIntent();
+            movementExecuteAt = currentIntent.HasValue
+                ? elapsedSeconds + config.SafeAnomalyStepSeconds
+                : float.PositiveInfinity;
+            RefreshAll();
+        }
+
+        private void ResolveRealtimeAnomalyStep()
+        {
+            var hadActiveRefBeforeResolve = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
+            AnomalyIntent? executedIntent = null;
+
+            if (currentIntent.HasValue && IsIntentValid(currentIntent.Value))
+            {
+                executedIntent = currentIntent;
+                var intent = currentIntent.Value;
+                var target = cells[intent.TargetRow, intent.TargetColumn];
+                target.State = CellState.Corrupted;
+                target.CorruptionAge = 0;
+            }
+
+            foreach (var cell in cells)
+            {
+                if (cell.State != CellState.Corrupted) continue;
+                if (executedIntent.HasValue && cell.Row == executedIntent.Value.TargetRow && cell.Column == executedIntent.Value.TargetColumn) continue;
+                cell.CorruptionAge++;
+                if (cell.CorruptionAge >= config.SafeCorruptionLifetime)
+                {
+                    cell.State = CellState.Destroyed;
+                    cell.Occupant = null;
+                }
+            }
+
+            var hasActiveRef = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
+            if (hasActiveRef)
+            {
+                GenerateIntent();
+                movementExecuteAt = currentIntent.HasValue
+                    ? elapsedSeconds + config.SafeAnomalyStepSeconds
+                    : float.PositiveInfinity;
+            }
+            else
+            {
+                currentIntent = null;
+                movementExecuteAt = float.PositiveInfinity;
+            }
+
+            if (hadActiveRefBeforeResolve && !hasActiveRef)
+            {
+                pendingSpawnIntent = null;
+                pendingSpawnExecuteAt = float.PositiveInfinity;
+                ScheduleNextOutbreak(config.SafeRespawnDelaySeconds);
+            }
+            else if (!pendingSpawnIntent.HasValue)
+            {
+                ScheduleNextOutbreak(hasActiveRef ? config.SafeActiveOutbreakDelaySeconds : config.SafeRespawnDelaySeconds);
+            }
+
+            RefreshAll();
         }
 
         private void BuildUi()
@@ -324,7 +448,7 @@ namespace ExcelHell.Prototype
             titleText = CreateText(background.transform, string.Empty, 28, FontStyle.Bold, TextAnchor.MiddleLeft);
             SetRect(titleText.rectTransform, 24, -16, 700, 48, new Vector2(0, 1));
             turnText = CreateText(background.transform, string.Empty, 20, FontStyle.Bold, TextAnchor.MiddleRight);
-            SetRect(turnText.rectTransform, 1180, -18, 380, 44, new Vector2(0, 1));
+            SetRect(turnText.rectTransform, 1040, -18, 520, 44, new Vector2(0, 1));
 
             BuildGrid(background.transform);
             BuildSidebar(background.transform);
@@ -503,7 +627,6 @@ namespace ExcelHell.Prototype
 
             if (key.Kind == ContentKind.RecordKey)
             {
-                // A record always owns the complete field schema. Missing values remain empty semantic slots.
                 tokens = schema.Fields
                     .Select(fieldId => data.FirstOrDefault(t => t.RecordId == key.RecordId && t.FieldId == fieldId))
                     .ToList();
@@ -512,7 +635,6 @@ namespace ExcelHell.Prototype
             }
             else
             {
-                // A field always owns one slot per record. CUT/DELETE/#REF!/consumption must not collapse identity.
                 tokens = schema.Records
                     .Select(recordId => data.FirstOrDefault(t => t.FieldId == key.FieldId && t.RecordId == recordId))
                     .ToList();
@@ -542,7 +664,6 @@ namespace ExcelHell.Prototype
                 .Select(token => token.Id)
                 .ToHashSet();
 
-            // Destination span follows the full semantic schema, not just surviving physical tokens.
             for (var i = 1; i <= movingTokens.Count; i++)
             {
                 var row = keyCell.Row + dr * i;
@@ -612,7 +733,6 @@ namespace ExcelHell.Prototype
             var required = pendingSumSources.Any(source => source.Occupant.IsRequiredSource);
             var reportTarget = IsReportTarget(row, column);
 
-            // SUM is destructive in worksheet space, but writing a report answer is a non-consuming calculation.
             if (!reportTarget)
                 foreach (var source in pendingSumSources) source.Occupant = null;
 
@@ -699,63 +819,20 @@ namespace ExcelHell.Prototype
 
         private void CompletePlayerAction(string localizedMessage)
         {
-            turn++;
-            ResolveAnomaly();
-            if (!finished && turn >= config.SafeMaxTurns)
-            {
-                finished = true;
-                statusText.text = loc.Get("ui.deadline");
-            }
-            else if (!finished) statusText.text = localizedMessage;
-            RefreshAll();
-        }
-
-        private void ResolveAnomaly()
-        {
-            var hadActiveRefBeforeResolve = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
-            var spawnedThisResolve = false;
-
-            if (pendingSpawnIntent.HasValue)
-            {
-                var pending = pendingSpawnIntent.Value;
-                if (pending.TurnsRemaining <= 1) spawnedThisResolve = TrySpawnPendingOutbreak();
-                else pendingSpawnIntent = new SpawnIntent(pending.Row, pending.Column, pending.TurnsRemaining - 1);
-            }
-
-            AnomalyIntent? executedIntent = null;
-            if (currentIntent.HasValue && IsIntentValid(currentIntent.Value))
-            {
-                executedIntent = currentIntent;
-                var intent = currentIntent.Value;
-                var target = cells[intent.TargetRow, intent.TargetColumn];
-                target.State = CellState.Corrupted;
-                target.CorruptionAge = 0;
-            }
-
-            foreach (var cell in cells)
-            {
-                if (cell.State != CellState.Corrupted) continue;
-                if (spawnedThisResolve && cell.CorruptionAge == 0) continue;
-                if (executedIntent.HasValue && cell.Row == executedIntent.Value.TargetRow && cell.Column == executedIntent.Value.TargetColumn) continue;
-                cell.CorruptionAge++;
-                if (cell.CorruptionAge >= config.SafeCorruptionLifetime)
-                {
-                    cell.State = CellState.Destroyed;
-                    cell.Occupant = null;
-                }
-            }
+            actionCount++;
+            if (!finished) statusText.text = localizedMessage;
 
             var hasActiveRef = cells.Cast<CellModel>().Any(cell => cell.State == CellState.Corrupted);
-            if (hasActiveRef) GenerateIntent();
-            else currentIntent = null;
-
-            if (hadActiveRefBeforeResolve && !hasActiveRef)
+            if (!hasActiveRef && currentIntent.HasValue)
             {
+                currentIntent = null;
+                movementExecuteAt = float.PositiveInfinity;
                 pendingSpawnIntent = null;
-                ScheduleNextOutbreak(config.SafeRespawnDelay);
+                pendingSpawnExecuteAt = float.PositiveInfinity;
+                ScheduleNextOutbreak(config.SafeRespawnDelaySeconds);
             }
-            else if (!pendingSpawnIntent.HasValue)
-                ScheduleNextOutbreak(hasActiveRef ? config.SafeActiveOutbreakDelay : config.SafeRespawnDelay);
+
+            RefreshAll();
         }
 
         private bool IsIntentValid(AnomalyIntent intent) =>
@@ -829,7 +906,7 @@ namespace ExcelHell.Prototype
             if (wrong.Count == 0)
             {
                 finished = true;
-                statusText.text = loc.Format("ui.accepted", turn, config.SafeMaxTurns);
+                statusText.text = loc.Format("ui.acceptedRealtime", FormatCountdown(remainingSeconds), actionCount);
             }
             else statusText.text = loc.Format("ui.rejected", string.Join(", ", wrong));
             RefreshAll();
@@ -853,23 +930,15 @@ namespace ExcelHell.Prototype
             for (var column = 0; column < columns; column++)
                 views[row, column]?.Refresh(cells[row, column], selection.Contains(cells[row, column]), IsIntentTarget(row, column), IsReportTarget(row, column), DisplayToken);
 
-            titleText.text = loc.Get("ui.title");
+            titleText.text = loc.Get("ui.titleRealtime");
             headingText.text = loc.Get("ui.reportTask");
-            helpText.text = loc.Get("ui.help");
+            helpText.text = loc.Get("ui.helpRealtime");
             foreach (var (text, stringId) in localizedLabels) text.text = loc.Get(stringId);
 
-            turnText.text = loc.Format("ui.turn", turn, config.SafeMaxTurns);
             var clipboardValue = clipboard == null ? loc.Get("ui.empty") : DisplayToken(clipboard, true);
             clipboardTextUi.text = loc.Format("ui.clipboard", clipboardValue);
 
-            if (pendingSpawnIntent.HasValue)
-            {
-                var spawn = pendingSpawnIntent.Value;
-                intentText.text = loc.Format("ui.refSpawn", cells[spawn.Row, spawn.Column].Address, spawn.TurnsRemaining);
-            }
-            else if (currentIntent.HasValue)
-                intentText.text = loc.Format("ui.refNext", cells[currentIntent.Value.TargetRow, currentIntent.Value.TargetColumn].Address);
-            else intentText.text = loc.Get("ui.refNoPath");
+            RefreshRealtimeLabels();
 
             if (goals.Count == 0) goalsText.text = loc.Get("ui.noGoals");
             else
@@ -886,6 +955,44 @@ namespace ExcelHell.Prototype
             }
         }
 
+        private void RefreshRealtimeLabels()
+        {
+            if (turnText != null)
+                turnText.text = loc.Format("ui.clockRealtime", FormatOfficeTime(), FormatCountdown(remainingSeconds));
+
+            if (intentText == null) return;
+
+            if (pendingSpawnIntent.HasValue)
+            {
+                var spawn = pendingSpawnIntent.Value;
+                intentText.text = loc.Format("ui.refSpawnRealtime",
+                    cells[spawn.Row, spawn.Column].Address,
+                    Mathf.CeilToInt(Mathf.Max(0f, pendingSpawnExecuteAt - elapsedSeconds)));
+            }
+            else if (currentIntent.HasValue)
+            {
+                intentText.text = loc.Format("ui.refNextRealtime",
+                    cells[currentIntent.Value.TargetRow, currentIntent.Value.TargetColumn].Address,
+                    Mathf.CeilToInt(Mathf.Max(0f, movementExecuteAt - elapsedSeconds)));
+            }
+            else intentText.text = loc.Get("ui.refNoPath");
+        }
+
+        private string FormatOfficeTime()
+        {
+            var progress = Mathf.Clamp01(elapsedSeconds / config.SafeLevelDurationSeconds);
+            var totalOfficeMinutes = 9 * 60 + Mathf.FloorToInt(progress * 9f * 60f);
+            var hour = totalOfficeMinutes / 60;
+            var minute = totalOfficeMinutes % 60;
+            return $"{hour:00}:{minute:00}";
+        }
+
+        private static string FormatCountdown(float seconds)
+        {
+            var whole = Mathf.CeilToInt(Mathf.Max(0f, seconds));
+            return $"{whole / 60:00}:{whole % 60:00}";
+        }
+
         private bool IsReportTarget(int row, int column) => goals.Any(g => g.TargetRow == row && g.TargetColumn == column);
 
         private bool IsReportInterfaceCell(int row, int column) =>
@@ -893,8 +1000,6 @@ namespace ExcelHell.Prototype
 
         private bool IsIntentTarget(int row, int column)
         {
-            // While a future outbreak is telegraphed, display only that spawn warning.
-            // The active movement intent is rendered by PrototypeMovementIntentOverlay.
             if (pendingSpawnIntent.HasValue)
                 return pendingSpawnIntent.Value.Row == row && pendingSpawnIntent.Value.Column == column;
 
@@ -1017,7 +1122,6 @@ namespace ExcelHell.Prototype
                 return;
             }
 
-            // Intent fill is stable. Selection is represented by the blue outline and must not hide/move the orange telegraph.
             background.color = intentTarget
                 ? new Color(1f, 0.73f, 0.34f, 1f)
                 : selected
