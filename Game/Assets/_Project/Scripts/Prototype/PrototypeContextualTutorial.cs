@@ -25,6 +25,14 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo FinishedField = typeof(ExcelHellPrototype).GetField("finished", Flags);
         private static readonly FieldInfo LocalizationField = typeof(ExcelHellPrototype).GetField("loc", Flags);
 
+        private static readonly Color PanelBorder = new(0.07f, 0.08f, 0.10f, 0.98f);
+        private static readonly Color PanelBackground = new(0.12f, 0.13f, 0.16f, 0.98f);
+        private static readonly Color PanelShadow = new(0f, 0f, 0f, 0.38f);
+        private static readonly Color Accent = new(0.96f, 0.57f, 0.10f, 1f);
+        private static readonly Color PrimaryText = new(0.95f, 0.96f, 0.98f, 1f);
+        private static readonly Color SecondaryText = new(0.78f, 0.81f, 0.86f, 1f);
+        private static readonly Color Divider = new(0.28f, 0.31f, 0.36f, 1f);
+
         private ExcelHellPrototype prototype;
         private CellModel[,] cells;
         private ExcelHellCellView[,] views;
@@ -33,7 +41,7 @@ namespace ExcelHell.Prototype
         private int lowBonusCountBeforePaste;
         private bool skipped;
         private bool completed;
-        private GUIStyle panelStyle;
+        private GUIStyle eyebrowStyle;
         private GUIStyle textStyle;
         private GUIStyle buttonStyle;
         private readonly Dictionary<ExcelHellCellView, Outline> highlights = new();
@@ -284,7 +292,7 @@ namespace ExcelHell.Prototype
             if (!highlights.TryGetValue(view, out var marker) || marker == null)
             {
                 marker = view.gameObject.AddComponent<Outline>();
-                marker.effectColor = new Color(0.96f, 0.57f, 0.10f, 1f);
+                marker.effectColor = Accent;
                 marker.effectDistance = new Vector2(4f, -4f);
                 marker.useGraphicAlpha = false;
                 highlights[view] = marker;
@@ -335,11 +343,40 @@ namespace ExcelHell.Prototype
             if (!Active) return;
             EnsureStyles();
 
-            var width = Mathf.Min(760f, Screen.width - 80f);
-            var rect = new Rect((Screen.width - width) * 0.5f, Screen.height - 145f, width, 92f);
-            GUI.Box(rect, GUIContent.none, panelStyle);
-            GUI.Label(new Rect(rect.x + 18, rect.y + 12, rect.width - 150, rect.height - 24), Message(), textStyle);
-            if (GUI.Button(new Rect(rect.xMax - 122, rect.y + 26, 104, 38), Ru("ПРОПУСТИТЬ", "SKIP"), buttonStyle))
+            const float outerMargin = 24f;
+            var width = Mathf.Max(320f, Mathf.Min(820f, Screen.width - outerMargin * 2f));
+            var compact = width < 620f;
+            var height = compact ? 148f : 112f;
+            var rect = new Rect((Screen.width - width) * 0.5f, Screen.height - height - 26f, width, height);
+
+            DrawSolidRect(new Rect(rect.x + 3f, rect.y + 5f, rect.width, rect.height), PanelShadow);
+            DrawSolidRect(rect, PanelBorder);
+            var inner = new Rect(rect.x + 2f, rect.y + 2f, rect.width - 4f, rect.height - 4f);
+            DrawSolidRect(inner, PanelBackground);
+            DrawSolidRect(new Rect(inner.x, inner.y, 5f, inner.height), Accent);
+
+            var header = Ru($"ОБУЧЕНИЕ {step + 1}/10", $"TUTORIAL {step + 1}/10");
+            GUI.Label(new Rect(rect.x + 22f, rect.y + 11f, rect.width - 44f, 22f), header, eyebrowStyle);
+
+            Rect messageRect;
+            Rect buttonRect;
+            if (compact)
+            {
+                textStyle.fontSize = 14;
+                messageRect = new Rect(rect.x + 22f, rect.y + 35f, rect.width - 44f, 70f);
+                buttonRect = new Rect(rect.xMax - 122f, rect.yMax - 39f, 100f, 28f);
+            }
+            else
+            {
+                textStyle.fontSize = 16;
+                var dividerX = rect.xMax - 146f;
+                DrawSolidRect(new Rect(dividerX, rect.y + 18f, 1f, rect.height - 36f), Divider);
+                messageRect = new Rect(rect.x + 22f, rect.y + 34f, rect.width - 190f, rect.height - 44f);
+                buttonRect = new Rect(rect.xMax - 124f, rect.y + 39f, 102f, 34f);
+            }
+
+            GUI.Label(messageRect, Message(), textStyle);
+            if (GUI.Button(buttonRect, Ru("ПРОПУСТИТЬ", "SKIP"), buttonStyle))
             {
                 skipped = true;
                 ClearHighlights();
@@ -348,23 +385,68 @@ namespace ExcelHell.Prototype
 
         private void EnsureStyles()
         {
-            if (panelStyle != null) return;
-            panelStyle = new GUIStyle(GUI.skin.box);
-            panelStyle.normal.background = Texture2D.whiteTexture;
-            panelStyle.normal.textColor = Color.black;
+            if (textStyle != null) return;
+
+            eyebrowStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                wordWrap = false
+            };
+            eyebrowStyle.normal.textColor = Accent;
 
             textStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 16,
                 alignment = TextAnchor.MiddleLeft,
                 wordWrap = true,
-                fontStyle = FontStyle.Normal
+                fontStyle = FontStyle.Normal,
+                richText = true
             };
+            textStyle.normal.textColor = PrimaryText;
+            textStyle.hover.textColor = PrimaryText;
+            textStyle.active.textColor = PrimaryText;
+            textStyle.focused.textColor = PrimaryText;
+
             buttonStyle = new GUIStyle(GUI.skin.button)
             {
-                fontSize = 13,
-                fontStyle = FontStyle.Bold
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                border = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(8, 8, 4, 4)
             };
+
+            buttonStyle.normal.background = CreateSolidTexture(new Color(0.24f, 0.27f, 0.32f, 1f));
+            buttonStyle.hover.background = CreateSolidTexture(new Color(0.33f, 0.37f, 0.43f, 1f));
+            buttonStyle.active.background = CreateSolidTexture(new Color(0.82f, 0.42f, 0.08f, 1f));
+            buttonStyle.focused.background = buttonStyle.hover.background;
+            buttonStyle.normal.textColor = PrimaryText;
+            buttonStyle.hover.textColor = Color.white;
+            buttonStyle.active.textColor = Color.white;
+            buttonStyle.focused.textColor = Color.white;
+        }
+
+        private static void DrawSolidRect(Rect rect, Color color)
+        {
+            var previous = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill);
+            GUI.color = previous;
+        }
+
+        private static Texture2D CreateSolidTexture(Color color)
+        {
+            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Point
+            };
+            texture.SetPixel(0, 0, color);
+            texture.Apply(false, true);
+            return texture;
         }
     }
 }
