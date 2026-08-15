@@ -22,7 +22,7 @@ namespace ExcelHell.Prototype
         private static void Bootstrap()
         {
             if (FindFirstObjectByType<PrototypeLevelDatasetAdapter>() != null) return;
-            var adapter = new GameObject("EXEL HELL Level Dataset Adapter").AddComponent<PrototypeLevelDatasetAdapter>();
+            var adapter = new GameObject("EXCEL HELL Level Dataset Adapter").AddComponent<PrototypeLevelDatasetAdapter>();
             DontDestroyOnLoad(adapter.gameObject);
         }
 
