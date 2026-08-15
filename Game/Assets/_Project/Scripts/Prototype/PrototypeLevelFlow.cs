@@ -12,6 +12,7 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo CurrentIntentField = typeof(ExcelHellPrototype).GetField("currentIntent", Flags);
         private static readonly FieldInfo IntentTextField = typeof(ExcelHellPrototype).GetField("intentText", Flags);
         private static readonly FieldInfo StatusTextField = typeof(ExcelHellPrototype).GetField("statusText", Flags);
+        private static readonly MethodInfo RefreshAllMethod = typeof(ExcelHellPrototype).GetMethod("RefreshAll", Flags);
 
         private ExcelHellPrototype prototype;
         private GUIStyle labelStyle;
@@ -33,8 +34,13 @@ namespace ExcelHell.Prototype
 
             if (!PrototypeLevelRuntime.Current.RefEnabled)
             {
+                var hadAnomalyTelegraph = PendingSpawnField?.GetValue(prototype) != null ||
+                                          CurrentIntentField?.GetValue(prototype) != null;
                 PendingSpawnField?.SetValue(prototype, null);
                 CurrentIntentField?.SetValue(prototype, null);
+                if (hadAnomalyTelegraph)
+                    RefreshAllMethod?.Invoke(prototype, null);
+
                 var intentText = IntentTextField?.GetValue(prototype) as Text;
                 if (intentText != null)
                     intentText.text = "АНОМАЛИЙ НЕТ / NO ANOMALIES";
