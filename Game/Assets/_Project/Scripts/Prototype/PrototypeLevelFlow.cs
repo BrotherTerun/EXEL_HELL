@@ -22,7 +22,7 @@ namespace ExcelHell.Prototype
         private static void Bootstrap()
         {
             if (FindFirstObjectByType<PrototypeLevelFlow>() != null) return;
-            var flow = new GameObject("EXEL HELL Level Flow").AddComponent<PrototypeLevelFlow>();
+            var flow = new GameObject("EXCEL HELL Level Flow").AddComponent<PrototypeLevelFlow>();
             DontDestroyOnLoad(flow.gameObject);
         }
 
@@ -34,16 +34,13 @@ namespace ExcelHell.Prototype
 
             if (!PrototypeLevelRuntime.Current.RefEnabled)
             {
-                var hadAnomalyTelegraph = PendingSpawnField?.GetValue(prototype) != null ||
-                                          CurrentIntentField?.GetValue(prototype) != null;
+                var hadAnomalyTelegraph = PendingSpawnField?.GetValue(prototype) != null || CurrentIntentField?.GetValue(prototype) != null;
                 PendingSpawnField?.SetValue(prototype, null);
                 CurrentIntentField?.SetValue(prototype, null);
-                if (hadAnomalyTelegraph)
-                    RefreshAllMethod?.Invoke(prototype, null);
+                if (hadAnomalyTelegraph) RefreshAllMethod?.Invoke(prototype, null);
 
                 var intentText = IntentTextField?.GetValue(prototype) as Text;
-                if (intentText != null)
-                    intentText.text = "АНОМАЛИЙ НЕТ / NO ANOMALIES";
+                if (intentText != null) intentText.text = "АНОМАЛИЙ НЕТ / NO ANOMALIES";
             }
         }
 
@@ -53,57 +50,38 @@ namespace ExcelHell.Prototype
             var statusText = StatusTextField?.GetValue(prototype) as Text;
             if (statusText == null) return false;
             var text = statusText.text ?? string.Empty;
-            return text.IndexOf("ОТЧЁТ ПРИНЯТ", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   text.IndexOf("REPORT ACCEPTED", StringComparison.OrdinalIgnoreCase) >= 0;
+            return text.IndexOf("ОТЧЁТ ПРИНЯТ", StringComparison.OrdinalIgnoreCase) >= 0 || text.IndexOf("REPORT ACCEPTED", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private void OnGUI()
         {
             EnsureStyles();
             var level = PrototypeLevelRuntime.Current;
-            GUI.Label(new Rect(18, Screen.height - 48, 820, 34),
-                $"УРОВЕНЬ {PrototypeLevelRuntime.CurrentIndex + 1}/{PrototypeLevelCatalog.Count}: {level.NameRu}  /  {level.NameEn}", labelStyle);
-
+            GUI.Label(new Rect(18, Screen.height - 48, 820, 34), $"УРОВЕНЬ {PrototypeLevelRuntime.CurrentIndex + 1}/{PrototypeLevelCatalog.Count}: {level.NameRu}  /  {level.NameEn}", labelStyle);
             if (!ReportAccepted()) return;
 
             if (PrototypeLevelRuntime.IsLast)
             {
-                GUI.Label(new Rect(Screen.width - 450, Screen.height - 48, 430, 34),
-                    "ТЕСТ ЗАВЕРШЁН / PLAYTEST COMPLETE", labelStyle);
+                GUI.Label(new Rect(Screen.width - 450, Screen.height - 48, 430, 34), "ТЕСТ ЗАВЕРШЁН / PLAYTEST COMPLETE", labelStyle);
                 return;
             }
 
-            if (GUI.Button(new Rect(Screen.width - 360, Screen.height - 58, 340, 42),
-                    "СЛЕДУЮЩИЙ УРОВЕНЬ / NEXT LEVEL", buttonStyle))
+            if (GUI.Button(new Rect(Screen.width - 360, Screen.height - 58, 340, 42), "СЛЕДУЮЩИЙ УРОВЕНЬ / NEXT LEVEL", buttonStyle))
             {
                 if (!PrototypeLevelRuntime.Advance()) return;
                 var old = prototype;
                 prototype = null;
                 Destroy(old.gameObject);
-                new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
+                new GameObject("EXCEL HELL Prototype").AddComponent<ExcelHellPrototype>();
             }
         }
 
         private void EnsureStyles()
         {
             if (labelStyle == null)
-            {
-                labelStyle = new GUIStyle(GUI.skin.label)
-                {
-                    fontSize = 18,
-                    fontStyle = FontStyle.Bold,
-                    alignment = TextAnchor.MiddleLeft
-                };
-            }
-
+                labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
             if (buttonStyle == null)
-            {
-                buttonStyle = new GUIStyle(GUI.skin.button)
-                {
-                    fontSize = 15,
-                    fontStyle = FontStyle.Bold
-                };
-            }
+                buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 15, fontStyle = FontStyle.Bold };
         }
     }
 }
