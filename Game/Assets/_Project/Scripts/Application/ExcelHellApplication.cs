@@ -12,7 +12,8 @@ namespace ExcelHell.Application
 {
     public sealed class ExcelHellApplication : MonoBehaviour
     {
-        private const int UiSortingOrder = 5000;
+        private const int UiSortingOrder = 32000;
+        private const float SettingsSaveDebounceSeconds = 0.3f;
         private static ExcelHellApplication instance;
 
         private readonly Stack<GameObject> screenHistory = new();
@@ -52,9 +53,8 @@ namespace ExcelHell.Application
         private Text vsyncText;
         private Text resolutionText;
         private Text languageText;
-        private Text applyText;
         private Text defaultsText;
-        private Text cancelText;
+        private Text settingsBackText;
         private Text loadTitleText;
         private Text loadInfoText;
         private Text loadSlotText;
@@ -69,7 +69,8 @@ namespace ExcelHell.Application
         private Slider sfxSlider;
 
         private AppSettingsData editingSettings;
-        private bool settingsOpenedFromGameplay;
+        private bool settingsDirty;
+        private float settingsDirtyAt;
 
         public static bool ShellAvailable => instance != null;
         public static bool GameplayActive { get; private set; }
@@ -106,7 +107,8 @@ namespace ExcelHell.Application
 
         private void Update()
         {
-            if (!GameplayActive) return;
+            PersistSettingsIfDue();
+
             var keyboard = Keyboard.current;
             if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
 
@@ -116,19 +118,26 @@ namespace ExcelHell.Application
                 return;
             }
 
-            if (settingsScreen.activeSelf)
+            if (settingsScreen != null && settingsScreen.activeSelf)
             {
-                CloseSettings();
+                ApplySettingsAndReturn();
                 return;
             }
 
-            if (loadScreen.activeSelf || helpScreen.activeSelf)
+            if ((loadScreen != null && loadScreen.activeSelf) || (helpScreen != null && helpScreen.activeSelf))
             {
                 CloseSubscreen();
                 return;
             }
 
-            SetPaused(!Paused);
+            if (GameplayActive)
+                SetPaused(!Paused);
+        }
+
+        private void OnDestroy()
+        {
+            PersistSettingsDraft();
+            if (instance == this) instance = null;
         }
 
         public static bool CanPrototypeBootstrap() => instance == null || GameplayActive;
@@ -170,14 +179,17 @@ namespace ExcelHell.Application
             Time.timeScale = 1f;
             Paused = false;
             GameplayActive = false;
+            PersistSettingsDraft();
+            editingSettings = null;
             DestroyPrototypeIfPresent();
             HideAllScreens();
             mainScreen.SetActive(true);
+            mainScreen.transform.SetAsLastSibling();
             currentScreen = mainScreen;
             screenHistory.Clear();
-            editingSettings = null;
             RefreshLocalizedText();
             RefreshContinueState();
+            EnsureShellOnTop();
         }
 
         private void NewGame()
@@ -199,8 +211,11 @@ namespace ExcelHell.Application
             Time.timeScale = 1f;
             Paused = false;
             GameplayActive = true;
+            PersistSettingsDraft();
             editingSettings = null;
             HideAllScreens();
+            currentScreen = null;
+            screenHistory.Clear();
             PrototypeLevelRuntime.SetCurrentIndex(levelIndex);
             DestroyPrototypeIfPresent();
             new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
@@ -209,16 +224,24 @@ namespace ExcelHell.Application
         private void SetPaused(bool paused)
         {
             if (!GameplayActive) return;
+
             Paused = paused;
             Time.timeScale = paused ? 0f : 1f;
             HideAllScreens();
-            if (paused)
+            screenHistory.Clear();
+
+            if (!paused)
             {
-                pauseScreen.SetActive(true);
-                currentScreen = pauseScreen;
-                screenHistory.Clear();
-                RefreshLocalizedText();
+                currentScreen = null;
+                return;
             }
+
+            pauseScreen.SetActive(true);
+            pauseScreen.transform.SetAsLastSibling();
+            currentScreen = pauseScreen;
+            RefreshLocalizedText();
+            EnsureShellOnTop();
+            Canvas.ForceUpdateCanvases();
         }
 
         private void SaveCheckpoint()
@@ -233,21 +256,21 @@ namespace ExcelHell.Application
             Time.timeScale = 1f;
             Paused = false;
             HideAllScreens();
+            currentScreen = null;
+            screenHistory.Clear();
             DestroyPrototypeIfPresent();
             new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
         }
 
-        private void OpenLoadScreen(bool fromGameplay)
+        private void OpenLoadScreen()
         {
-            settingsOpenedFromGameplay = fromGameplay;
             PushScreen(loadScreen);
             RefreshLoadInfo();
             RefreshLocalizedText();
         }
 
-        private void OpenHelpScreen(bool fromGameplay)
+        private void OpenHelpScreen()
         {
-            settingsOpenedFromGameplay = fromGameplay;
             PushScreen(helpScreen);
             RefreshLocalizedText();
         }
@@ -266,21 +289,27 @@ namespace ExcelHell.Application
             RefreshContinueState();
         }
 
-        private void OpenSettings(bool fromGameplay)
+        private void OpenSettings()
         {
-            settingsOpenedFromGameplay = fromGameplay;
             editingSettings = CloneSettings(AppSettingsService.Current ?? AppPersistence.DefaultSettings());
+            settingsDirty = false;
             SyncSettingsControls();
             RefreshLocalizedText();
             PushScreen(settingsScreen);
         }
 
-        private void ApplyAndCloseSettings()
+        private void ApplySettingsAndReturn()
         {
-            PullSliderValues();
-            AppSettingsService.Apply(editingSettings, true);
-            editingSettings = null;
-            CloseSettings();
+            if (editingSettings != null)
+            {
+                PullSliderValues();
+                AppSettingsService.Apply(editingSettings, true);
+                settingsDirty = false;
+                editingSettings = null;
+            }
+
+            if (resolutionPopup != null) resolutionPopup.SetActive(false);
+            CloseSubscreen();
         }
 
         private void ResetSettings()
@@ -288,51 +317,48 @@ namespace ExcelHell.Application
             editingSettings = AppPersistence.DefaultSettings();
             SyncSettingsControls();
             RefreshLocalizedText();
-        }
-
-        private void CloseSettings()
-        {
-            if (resolutionPopup != null) resolutionPopup.SetActive(false);
-            editingSettings = null;
-            if (settingsOpenedFromGameplay)
-            {
-                HideAllScreens();
-                pauseScreen.SetActive(true);
-                currentScreen = pauseScreen;
-                Paused = true;
-                Time.timeScale = 0f;
-                screenHistory.Clear();
-            }
-            else
-            {
-                HideAllScreens();
-                mainScreen.SetActive(true);
-                currentScreen = mainScreen;
-                screenHistory.Clear();
-            }
-            RefreshLocalizedText();
+            MarkSettingsDirty();
         }
 
         private void CloseSubscreen()
         {
+            if (resolutionPopup != null) resolutionPopup.SetActive(false);
+
             if (screenHistory.Count > 0)
             {
                 var previous = screenHistory.Pop();
                 HideAllScreens();
                 previous.SetActive(true);
+                previous.transform.SetAsLastSibling();
                 currentScreen = previous;
                 RefreshLocalizedText();
+                EnsureShellOnTop();
                 return;
             }
-            CloseSettings();
+
+            if (GameplayActive && Paused)
+            {
+                HideAllScreens();
+                pauseScreen.SetActive(true);
+                pauseScreen.transform.SetAsLastSibling();
+                currentScreen = pauseScreen;
+                EnsureShellOnTop();
+                return;
+            }
+
+            ShowMainMenu();
         }
 
         private void PushScreen(GameObject target)
         {
-            if (currentScreen != null && currentScreen.activeSelf) screenHistory.Push(currentScreen);
+            if (currentScreen != null && currentScreen.activeSelf)
+                screenHistory.Push(currentScreen);
+
             HideAllScreens();
             target.SetActive(true);
+            target.transform.SetAsLastSibling();
             currentScreen = target;
+            EnsureShellOnTop();
         }
 
         private void HideAllScreens()
@@ -348,9 +374,12 @@ namespace ExcelHell.Application
         private void RefreshContinueState()
         {
             if (continueButton == null) return;
-            continueButton.interactable = AppPersistence.HasProgress;
+            var hasProgress = AppPersistence.HasProgress;
+            continueButton.interactable = hasProgress;
             if (continueText != null)
-                continueText.text = AppPersistence.HasProgress ? L("ПРОДОЛЖИТЬ", "CONTINUE") : L("ПРОДОЛЖИТЬ — НЕТ СОХРАНЕНИЯ", "CONTINUE — NO SAVE");
+                continueText.text = hasProgress
+                    ? L("ПРОДОЛЖИТЬ", "CONTINUE")
+                    : L("ПРОДОЛЖИТЬ — НЕТ СОХРАНЕНИЯ", "CONTINUE — NO SAVE");
         }
 
         private void RefreshLoadInfo()
@@ -378,14 +407,16 @@ namespace ExcelHell.Application
             canvasGo.transform.SetParent(transform, false);
             canvas = canvasGo.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.overrideSorting = true;
             canvas.sortingOrder = UiSortingOrder;
+
             var scaler = canvasGo.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920, 1080);
             scaler.matchWidthOrHeight = 0.5f;
 
             mainScreen = CreateScreen("Main Menu", new Color(0.035f, 0.04f, 0.045f, 1f));
-            pauseScreen = CreateScreen("Pause Menu", new Color(0.02f, 0.025f, 0.03f, 0.94f));
+            pauseScreen = CreateScreen("Pause Menu", new Color(0.02f, 0.025f, 0.03f, 0.96f));
             settingsScreen = CreateScreen("Settings", new Color(0.025f, 0.03f, 0.035f, 0.98f));
             loadScreen = CreateScreen("Load Game", new Color(0.025f, 0.03f, 0.035f, 0.98f));
             helpScreen = CreateScreen("Help", new Color(0.025f, 0.03f, 0.035f, 0.98f));
@@ -399,67 +430,66 @@ namespace ExcelHell.Application
 
         private void BuildMainMenu()
         {
-            var panel = CreatePanel(mainScreen.transform, 610f, 690f);
-            titleText = CreateLabel(panel, "EXEL HELL", 58, FontStyle.Bold, 78f);
-            subtitleText = CreateLabel(panel, "", 18, FontStyle.Normal, 34f);
-            AddSpacer(panel, 18f);
-            CreateButton(panel, "", NewGame, out newGameText);
-            continueButton = CreateButton(panel, "", ContinueGame, out continueText);
-            CreateButton(panel, "", () => OpenLoadScreen(false), out loadButtonText);
-            CreateButton(panel, "", () => OpenSettings(false), out settingsButtonText);
-            CreateButton(panel, "", QuitGame, out quitText);
+            var panel = CreatePanel(mainScreen.transform, 610f, 600f);
+            titleText = CreateLabel(panel, "EXEL HELL", 56, FontStyle.Bold, 70f);
+            subtitleText = CreateLabel(panel, "", 18, FontStyle.Normal, 30f);
+            AddSpacer(panel, 12f);
+            CreateButton(panel, "", NewGame, out newGameText, 54f);
+            continueButton = CreateButton(panel, "", ContinueGame, out continueText, 54f);
+            CreateButton(panel, "", OpenLoadScreen, out loadButtonText, 54f);
+            CreateButton(panel, "", OpenSettings, out settingsButtonText, 54f);
+            CreateButton(panel, "", QuitGame, out quitText, 54f);
         }
 
         private void BuildPauseMenu()
         {
-            var panel = CreatePanel(pauseScreen.transform, 590f, 790f);
-            pauseTitleText = CreateLabel(panel, "", 42, FontStyle.Bold, 64f);
-            CreateButton(panel, "", () => SetPaused(false), out resumeText);
-            CreateButton(panel, "", SaveCheckpoint, out saveText);
-            CreateButton(panel, "", () => OpenLoadScreen(true), out pauseLoadText);
-            CreateButton(panel, "", () => OpenSettings(true), out pauseSettingsText);
-            CreateButton(panel, "", () => OpenHelpScreen(true), out helpButtonText);
-            CreateButton(panel, "", ResetCurrentLevel, out resetLevelText);
-            CreateButton(panel, "", ShowMainMenu, out mainMenuText);
+            var panel = CreatePanel(pauseScreen.transform, 590f, 620f);
+            pauseTitleText = CreateLabel(panel, "", 40, FontStyle.Bold, 52f);
+            CreateButton(panel, "", () => SetPaused(false), out resumeText, 46f);
+            CreateButton(panel, "", SaveCheckpoint, out saveText, 46f);
+            CreateButton(panel, "", OpenLoadScreen, out pauseLoadText, 46f);
+            CreateButton(panel, "", OpenSettings, out pauseSettingsText, 46f);
+            CreateButton(panel, "", OpenHelpScreen, out helpButtonText, 46f);
+            CreateButton(panel, "", ResetCurrentLevel, out resetLevelText, 46f);
+            CreateButton(panel, "", ShowMainMenu, out mainMenuText, 46f);
         }
 
         private void BuildLoadMenu()
         {
-            var panel = CreatePanel(loadScreen.transform, 720f, 570f);
-            loadTitleText = CreateLabel(panel, "", 40, FontStyle.Bold, 68f);
-            loadInfoText = CreateLabel(panel, "", 20, FontStyle.Normal, 150f);
-            CreateButton(panel, "", LoadSelectedSave, out loadSlotText);
-            CreateButton(panel, "", DeleteSelectedSave, out deleteSaveText);
-            CreateButton(panel, "", CloseSubscreen, out backFromLoadText);
+            var panel = CreatePanel(loadScreen.transform, 720f, 500f);
+            loadTitleText = CreateLabel(panel, "", 38, FontStyle.Bold, 56f);
+            loadInfoText = CreateLabel(panel, "", 19, FontStyle.Normal, 145f);
+            CreateButton(panel, "", LoadSelectedSave, out loadSlotText, 50f);
+            CreateButton(panel, "", DeleteSelectedSave, out deleteSaveText, 50f);
+            CreateButton(panel, "", CloseSubscreen, out backFromLoadText, 50f);
         }
 
         private void BuildHelpMenu()
         {
-            var panel = CreatePanel(helpScreen.transform, 900f, 720f);
-            helpTitleText = CreateLabel(panel, "", 40, FontStyle.Bold, 68f);
-            helpBodyText = CreateLabel(panel, "", 19, FontStyle.Normal, 470f);
+            var panel = CreatePanel(helpScreen.transform, 900f, 700f);
+            helpTitleText = CreateLabel(panel, "", 38, FontStyle.Bold, 56f);
+            helpBodyText = CreateLabel(panel, "", 18, FontStyle.Normal, 475f);
             helpBodyText.alignment = TextAnchor.UpperLeft;
-            CreateButton(panel, "", CloseSubscreen, out backFromHelpText);
+            CreateButton(panel, "", CloseSubscreen, out backFromHelpText, 48f);
         }
 
         private void BuildSettingsMenu()
         {
-            var panel = CreatePanel(settingsScreen.transform, 820f, 900f);
-            settingsTitleText = CreateLabel(panel, "", 40, FontStyle.Bold, 62f);
+            var panel = CreatePanel(settingsScreen.transform, 800f, 690f);
+            settingsTitleText = CreateLabel(panel, "", 38, FontStyle.Bold, 52f);
 
             masterSlider = CreateSliderRow(panel, out masterLabel, OnMasterChanged);
             musicSlider = CreateSliderRow(panel, out musicLabel, OnMusicChanged);
             sfxSlider = CreateSliderRow(panel, out sfxLabel, OnSfxChanged);
 
-            CreateButton(panel, "", ToggleFullscreen, out fullscreenText, 54f);
-            CreateButton(panel, "", ToggleVSync, out vsyncText, 54f);
-            CreateButton(panel, "", ToggleResolutionPopup, out resolutionText, 54f);
-            CreateButton(panel, "", ToggleEditingLanguage, out languageText, 54f);
+            CreateButton(panel, "", ToggleFullscreen, out fullscreenText, 44f);
+            CreateButton(panel, "", ToggleVSync, out vsyncText, 44f);
+            CreateButton(panel, "", ToggleResolutionPopup, out resolutionText, 44f);
+            CreateButton(panel, "", ToggleEditingLanguage, out languageText, 44f);
 
-            AddSpacer(panel, 6f);
-            CreateButton(panel, "", ApplyAndCloseSettings, out applyText, 54f);
-            CreateButton(panel, "", ResetSettings, out defaultsText, 54f);
-            CreateButton(panel, "", CloseSettings, out cancelText, 54f);
+            AddSpacer(panel, 4f);
+            CreateButton(panel, "", ResetSettings, out defaultsText, 44f);
+            CreateButton(panel, "", ApplySettingsAndReturn, out settingsBackText, 44f);
 
             BuildResolutionPopup();
         }
@@ -468,9 +498,12 @@ namespace ExcelHell.Application
         {
             var row = new GameObject("Slider Row", typeof(RectTransform), typeof(LayoutElement));
             row.transform.SetParent(parent, false);
-            row.GetComponent<LayoutElement>().preferredHeight = 70f;
+            var rowLayout = row.GetComponent<LayoutElement>();
+            rowLayout.minHeight = 58f;
+            rowLayout.preferredHeight = 58f;
+            rowLayout.flexibleHeight = 0f;
 
-            label = CreateFreeText(row.transform, 18, FontStyle.Bold, TextAnchor.MiddleLeft);
+            label = CreateFreeText(row.transform, 17, FontStyle.Bold, TextAnchor.MiddleLeft);
             var labelRect = label.rectTransform;
             labelRect.anchorMin = new Vector2(0f, 0f);
             labelRect.anchorMax = new Vector2(0.47f, 1f);
@@ -482,8 +515,8 @@ namespace ExcelHell.Application
             var sliderRect = sliderGo.GetComponent<RectTransform>();
             sliderRect.anchorMin = new Vector2(0.5f, 0.5f);
             sliderRect.anchorMax = new Vector2(1f, 0.5f);
-            sliderRect.offsetMin = new Vector2(0, -12);
-            sliderRect.offsetMax = new Vector2(-4, 12);
+            sliderRect.offsetMin = new Vector2(0, -10);
+            sliderRect.offsetMax = new Vector2(-4, 10);
 
             var background = new GameObject("Background", typeof(RectTransform), typeof(Image));
             background.transform.SetParent(sliderGo.transform, false);
@@ -504,7 +537,7 @@ namespace ExcelHell.Application
             var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
             handle.transform.SetParent(handleArea.transform, false);
             var handleRect = handle.GetComponent<RectTransform>();
-            handleRect.sizeDelta = new Vector2(22, 34);
+            handleRect.sizeDelta = new Vector2(20, 30);
             handle.GetComponent<Image>().color = new Color(0.9f, 0.94f, 0.96f, 1f);
 
             var slider = sliderGo.GetComponent<Slider>();
@@ -525,21 +558,23 @@ namespace ExcelHell.Application
             var rect = resolutionPopup.GetComponent<RectTransform>();
             rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(520f, 640f);
+            rect.sizeDelta = new Vector2(500f, 500f);
             resolutionPopup.GetComponent<Image>().color = new Color(0.055f, 0.065f, 0.075f, 1f);
+
             var layout = resolutionPopup.GetComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(18, 18, 18, 18);
-            layout.spacing = 8f;
+            layout.padding = new RectOffset(16, 16, 16, 16);
+            layout.spacing = 6f;
             layout.childControlWidth = true;
             layout.childForceExpandWidth = true;
-            layout.childControlHeight = false;
+            layout.childControlHeight = true;
             layout.childForceExpandHeight = false;
 
             foreach (var resolution in resolutions.Take(9))
             {
                 var captured = resolution;
-                CreateButton(resolutionPopup.transform, $"{captured.Width} × {captured.Height}", () => SelectResolution(captured), 52f);
+                CreateButton(resolutionPopup.transform, $"{captured.Width} × {captured.Height}", () => SelectResolution(captured), 44f);
             }
+
             resolutionPopup.SetActive(false);
         }
 
@@ -547,7 +582,11 @@ namespace ExcelHell.Application
         {
             if (resolutionPopup == null) return;
             resolutionPopup.SetActive(!resolutionPopup.activeSelf);
-            if (resolutionPopup.activeSelf) resolutionPopup.transform.SetAsLastSibling();
+            if (resolutionPopup.activeSelf)
+            {
+                resolutionPopup.transform.SetAsLastSibling();
+                EnsureShellOnTop();
+            }
         }
 
         private void SelectResolution((int Width, int Height) resolution)
@@ -557,6 +596,7 @@ namespace ExcelHell.Application
             editingSettings.ResolutionHeight = resolution.Height;
             resolutionPopup.SetActive(false);
             RefreshSettingsLabels();
+            MarkSettingsDirty();
         }
 
         private void ToggleEditingLanguage()
@@ -566,6 +606,7 @@ namespace ExcelHell.Application
             RefreshLocalizedText();
             RefreshSettingsLabels();
             RefreshLoadInfo();
+            MarkSettingsDirty();
         }
 
         private void ToggleFullscreen()
@@ -573,6 +614,7 @@ namespace ExcelHell.Application
             if (editingSettings == null) return;
             editingSettings.Fullscreen = !editingSettings.Fullscreen;
             RefreshSettingsLabels();
+            MarkSettingsDirty();
         }
 
         private void ToggleVSync()
@@ -580,13 +622,16 @@ namespace ExcelHell.Application
             if (editingSettings == null) return;
             editingSettings.VSync = !editingSettings.VSync;
             RefreshSettingsLabels();
+            MarkSettingsDirty();
         }
 
         private void OnMasterChanged(float value)
         {
             if (editingSettings == null) return;
             editingSettings.MasterVolume = value;
+            AudioListener.volume = value;
             RefreshSettingsLabels();
+            MarkSettingsDirty();
         }
 
         private void OnMusicChanged(float value)
@@ -594,6 +639,7 @@ namespace ExcelHell.Application
             if (editingSettings == null) return;
             editingSettings.MusicVolume = value;
             RefreshSettingsLabels();
+            MarkSettingsDirty();
         }
 
         private void OnSfxChanged(float value)
@@ -601,6 +647,7 @@ namespace ExcelHell.Application
             if (editingSettings == null) return;
             editingSettings.SfxVolume = value;
             RefreshSettingsLabels();
+            MarkSettingsDirty();
         }
 
         private void PullSliderValues()
@@ -618,6 +665,28 @@ namespace ExcelHell.Application
             musicSlider.SetValueWithoutNotify(editingSettings.MusicVolume);
             sfxSlider.SetValueWithoutNotify(editingSettings.SfxVolume);
             RefreshSettingsLabels();
+        }
+
+        private void MarkSettingsDirty()
+        {
+            if (editingSettings == null) return;
+            settingsDirty = true;
+            settingsDirtyAt = Time.realtimeSinceStartup;
+        }
+
+        private void PersistSettingsIfDue()
+        {
+            if (!settingsDirty || editingSettings == null) return;
+            if (Time.realtimeSinceStartup - settingsDirtyAt < SettingsSaveDebounceSeconds) return;
+            PersistSettingsDraft();
+        }
+
+        private void PersistSettingsDraft()
+        {
+            if (!settingsDirty || editingSettings == null) return;
+            PullSliderValues();
+            AppPersistence.SaveSettings(editingSettings);
+            settingsDirty = false;
         }
 
         private void RefreshSettingsLabels()
@@ -648,21 +717,22 @@ namespace ExcelHell.Application
             if (resetLevelText != null) resetLevelText.text = L("СБРОСИТЬ УРОВЕНЬ", "RESET LEVEL");
             if (mainMenuText != null) mainMenuText.text = L("ГЛАВНОЕ МЕНЮ", "MAIN MENU");
             if (settingsTitleText != null) settingsTitleText.text = L("НАСТРОЙКИ", "SETTINGS");
-            if (applyText != null) applyText.text = L("ПРИМЕНИТЬ", "APPLY");
             if (defaultsText != null) defaultsText.text = L("ПО УМОЛЧАНИЮ", "DEFAULTS");
-            if (cancelText != null) cancelText.text = L("ОТМЕНА", "CANCEL");
+            if (settingsBackText != null) settingsBackText.text = L("НАЗАД", "BACK");
             if (loadTitleText != null) loadTitleText.text = L("ЗАГРУЗКА", "LOAD GAME");
             if (loadSlotText != null) loadSlotText.text = L("ЗАГРУЗИТЬ СЛОТ", "LOAD SLOT");
             if (deleteSaveText != null) deleteSaveText.text = L("УДАЛИТЬ СОХРАНЕНИЕ", "DELETE SAVE");
             if (backFromLoadText != null) backFromLoadText.text = L("НАЗАД", "BACK");
             if (helpTitleText != null) helpTitleText.text = L("СПРАВКА", "HELP");
             if (backFromHelpText != null) backFromHelpText.text = L("НАЗАД", "BACK");
+
             if (helpBodyText != null)
             {
                 helpBodyText.text = L(
                     "Основные действия:\n\n• SORT собирает данные вокруг выбранного ключа.\n• SUM работает с непрерывным диапазоном минимум из двух чисел.\n• CUT / PASTE позволяют перестраивать лист.\n• DELETE удаляет клетку и может локализовать #REF!.\n• SUBMIT проверяет заполненный отчёт.\n\n#REF! заранее показывает следующую цель. Планируйте действия так, чтобы сохранить данные, необходимые для отчёта.\n\nEsc или кнопка МЕНЮ открывают системное меню.",
                     "Core actions:\n\n• SORT assembles data around the selected key.\n• SUM works on a contiguous range containing at least two numbers.\n• CUT / PASTE restructure the worksheet.\n• DELETE destroys a cell and can quarantine #REF!.\n• SUBMIT checks the completed report.\n\n#REF! telegraphs its next target. Plan around the threat and preserve report-critical data.\n\nEsc or the MENU button opens the system menu.");
             }
+
             RefreshContinueState();
             RefreshSettingsLabels();
         }
@@ -706,13 +776,14 @@ namespace ExcelHell.Application
             rect.anchoredPosition = Vector2.zero;
             rect.sizeDelta = new Vector2(width, height);
             panel.GetComponent<Image>().color = new Color(0.08f, 0.095f, 0.105f, 0.98f);
+
             var layout = panel.GetComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(36, 36, 28, 28);
-            layout.spacing = 10f;
+            layout.padding = new RectOffset(28, 28, 24, 24);
+            layout.spacing = 8f;
             layout.childAlignment = TextAnchor.UpperCenter;
             layout.childControlWidth = true;
             layout.childForceExpandWidth = true;
-            layout.childControlHeight = false;
+            layout.childControlHeight = true;
             layout.childForceExpandHeight = false;
             return panel.transform;
         }
@@ -721,7 +792,10 @@ namespace ExcelHell.Application
         {
             var text = CreateFreeText(parent, size, style, TextAnchor.MiddleCenter);
             text.text = value;
-            text.gameObject.AddComponent<LayoutElement>().preferredHeight = height;
+            var layout = text.gameObject.AddComponent<LayoutElement>();
+            layout.minHeight = height;
+            layout.preferredHeight = height;
+            layout.flexibleHeight = 0f;
             return text;
         }
 
@@ -740,16 +814,21 @@ namespace ExcelHell.Application
             return text;
         }
 
-        private Button CreateButton(Transform parent, string label, Action callback, float height = 62f)
+        private Button CreateButton(Transform parent, string label, Action callback, float height = 54f)
         {
             return CreateButton(parent, label, callback, out _, height);
         }
 
-        private Button CreateButton(Transform parent, string label, Action callback, out Text labelText, float height = 62f)
+        private Button CreateButton(Transform parent, string label, Action callback, out Text labelText, float height = 54f)
         {
             var go = new GameObject("Button", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
             go.transform.SetParent(parent, false);
-            go.GetComponent<LayoutElement>().preferredHeight = height;
+
+            var layout = go.GetComponent<LayoutElement>();
+            layout.minHeight = height;
+            layout.preferredHeight = height;
+            layout.flexibleHeight = 0f;
+
             var image = go.GetComponent<Image>();
             image.color = new Color(0.14f, 0.18f, 0.2f, 1f);
             var button = go.GetComponent<Button>();
@@ -761,7 +840,7 @@ namespace ExcelHell.Application
             button.colors = colors;
             button.onClick.AddListener(() => callback?.Invoke());
 
-            labelText = CreateFreeText(go.transform, 20, FontStyle.Bold, TextAnchor.MiddleCenter);
+            labelText = CreateFreeText(go.transform, 18, FontStyle.Bold, TextAnchor.MiddleCenter);
             Stretch(labelText.rectTransform);
             labelText.rectTransform.offsetMin = new Vector2(12, 4);
             labelText.rectTransform.offsetMax = new Vector2(-12, -4);
@@ -773,7 +852,10 @@ namespace ExcelHell.Application
         {
             var go = new GameObject("Spacer", typeof(RectTransform), typeof(LayoutElement));
             go.transform.SetParent(parent, false);
-            go.GetComponent<LayoutElement>().preferredHeight = height;
+            var layout = go.GetComponent<LayoutElement>();
+            layout.minHeight = height;
+            layout.preferredHeight = height;
+            layout.flexibleHeight = 0f;
         }
 
         private static void Stretch(RectTransform rect)
@@ -782,6 +864,14 @@ namespace ExcelHell.Application
             rect.anchorMax = Vector2.one;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
+        }
+
+        private void EnsureShellOnTop()
+        {
+            if (canvas == null) return;
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = UiSortingOrder;
+            canvas.gameObject.SetActive(true);
         }
 
         private void EnsureEventSystem()
