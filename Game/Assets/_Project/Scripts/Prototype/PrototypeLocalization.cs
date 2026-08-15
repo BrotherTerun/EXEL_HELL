@@ -14,7 +14,7 @@ namespace ExcelHell.Prototype
         {
             [PrototypeLanguage.Russian] = new Dictionary<string, string>
             {
-                ["ui.title"] = "EXEL HELL // MVP 0.4",
+                ["ui.title"] = "EXCEL HELL // MVP 0.4",
                 ["ui.reportTask"] = "ЗАДАЧА ОТЧЁТА",
                 ["ui.sum"] = "SUM",
                 ["ui.sort"] = "SORT",
@@ -32,9 +32,9 @@ namespace ExcelHell.Prototype
                 ["ui.refSpawn"] = "НОВЫЙ #REF! → {0} через {1} ход(а)",
                 ["ui.spill"] = "#SPILL! Недостаточно непрерывного свободного места.",
                 ["ui.select"] = "Выберите данные или ключ. SORT собирает связанную группу; SUM работает минимум с двумя числами.",
-                ["ui.sumNeedRange"] = "SUM нужен выделенный числовой диапазон.",
-                ["ui.sumNeedTwo"] = "SUM требует минимум две числовые клетки.",
-                ["ui.sumInvalid"] = "SUM принимает только обычные числовые токены и агрегаты.",
+                ["ui.sumNeedRange"] = "SUM нужен выделенный диапазон минимум с двумя числами.",
+                ["ui.sumNeedTwo"] = "SUM требует минимум две числовые клетки; обычные пустые клетки игнорируются.",
+                ["ui.sumInvalid"] = "SUM игнорирует обычные пустые клетки, но не проходит через #REF!, Destroyed, ключи или подписи.",
                 ["ui.sumTarget"] = "SUM = {0}. Выберите пустую клетку для результата.",
                 ["ui.sumBadTarget"] = "Результат SUM можно поместить только в пустую обычную клетку.",
                 ["ui.sumDone"] = "SUM схлопнул {0} значений в {1}.",
@@ -58,7 +58,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "ОТЧЁТ ОТКЛОНЁН: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "В Config не выбрано ни одной задачи отчёта.",
-                ["ui.help"] = "Зелёные клетки — защищённые поля отчёта. SORT собирает связанные данные.\nSUM в таблице поглощает диапазон; SUM прямо в отчёт считает ответ без уничтожения источников.\nSUBMIT проверяет только итоговые числа. DELETE локализует один #REF!, но не может уничтожить структуру отчёта.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
+                ["ui.help"] = "Зелёные клетки — защищённые поля отчёта. SORT собирает данные вокруг выбранного ключа.\nSUM игнорирует обычные пустые клетки; #REF!/Destroyed ломают диапазон. На листе SUM поглощает числа, а прямо в отчёт сохраняет источники.\nSUBMIT проверяет только итоговые числа. DELETE локализует #REF!, но оставляет уничтоженную клетку, а не пустую.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
 
                 ["record.ivanov"] = "Иванов",
                 ["record.petrov"] = "Петров",
@@ -79,7 +79,7 @@ namespace ExcelHell.Prototype
             },
             [PrototypeLanguage.English] = new Dictionary<string, string>
             {
-                ["ui.title"] = "EXEL HELL // MVP 0.4",
+                ["ui.title"] = "EXCEL HELL // MVP 0.4",
                 ["ui.reportTask"] = "REPORT TASK",
                 ["ui.sum"] = "SUM",
                 ["ui.sort"] = "SORT",
@@ -97,9 +97,9 @@ namespace ExcelHell.Prototype
                 ["ui.refSpawn"] = "NEW #REF! → {0} in {1} turn(s)",
                 ["ui.spill"] = "#SPILL! Not enough contiguous free space.",
                 ["ui.select"] = "Select data or a key. SORT assembles a semantic group; SUM needs at least two numbers.",
-                ["ui.sumNeedRange"] = "SUM needs a selected numeric range.",
-                ["ui.sumNeedTwo"] = "SUM requires at least two numeric cells.",
-                ["ui.sumInvalid"] = "SUM accepts only normal numeric tokens and aggregates.",
+                ["ui.sumNeedRange"] = "SUM needs a selected range containing at least two numbers.",
+                ["ui.sumNeedTwo"] = "SUM requires at least two numeric cells; normal blanks are ignored.",
+                ["ui.sumInvalid"] = "SUM ignores normal blanks, but cannot cross #REF!, Destroyed cells, keys, or labels.",
                 ["ui.sumTarget"] = "SUM = {0}. Pick an empty cell for the result.",
                 ["ui.sumBadTarget"] = "SUM result needs an empty Normal cell.",
                 ["ui.sumDone"] = "SUM collapsed {0} values into {1}.",
@@ -123,7 +123,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "REPORT REJECTED: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "No report goals selected in Config.",
-                ["ui.help"] = "Green cells are protected report targets. SORT assembles related data.\nSUM in worksheet space consumes its range; SUM directly into a report cell calculates without consuming sources.\nSUBMIT checks final numbers only. DELETE quarantines one #REF!, but cannot destroy report structure.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
+                ["ui.help"] = "Green cells are protected report targets. SORT assembles data around the selected key.\nSUM ignores normal blanks; #REF!/Destroyed cells break the range. Worksheet SUM consumes numeric sources; report-target SUM preserves them.\nSUBMIT checks final numbers only. DELETE quarantines #REF!, but leaves a destroyed cell rather than a blank.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
 
                 ["record.ivanov"] = "Ivanov",
                 ["record.petrov"] = "Petrov",
