@@ -23,5 +23,5 @@ MonoBehaviour:
   spawnPreferredDistance: 2
   spawnDistanceVariation: 1
   spawnCandidatePoolSize: 4
-  showExpectedAnswers: 1
-  showSpawnDebug: 1
+  showExpectedAnswers: 0
+  showSpawnDebug: 0
