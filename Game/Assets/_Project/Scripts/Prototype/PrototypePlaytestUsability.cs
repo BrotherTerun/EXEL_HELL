@@ -8,8 +8,8 @@ using UnityEngine.UI;
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Playtest-facing usability layer added after the first external observation pass.
-    /// It keeps the frozen core small while making the non-standard spreadsheet rules explicit.
+    /// Playtest-facing usability layer. Keeps the corrected SUM rules and exposes an always-available
+    /// reference guide. First-time onboarding is handled separately by PrototypeContextualTutorial.
     /// </summary>
     public sealed class PrototypePlaytestUsability : MonoBehaviour
     {
@@ -21,15 +21,12 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo AwaitingSumTargetField = typeof(ExcelHellPrototype).GetField("awaitingSumTarget", Flags);
         private static readonly FieldInfo StatusTextField = typeof(ExcelHellPrototype).GetField("statusText", Flags);
         private static readonly FieldInfo LocalizationField = typeof(ExcelHellPrototype).GetField("loc", Flags);
-        private static readonly FieldInfo ElapsedSecondsField = typeof(ExcelHellPrototype).GetField("elapsedSeconds", Flags);
-        private static readonly FieldInfo RemainingSecondsField = typeof(ExcelHellPrototype).GetField("remainingSeconds", Flags);
         private static readonly MethodInfo CanActMethod = typeof(ExcelHellPrototype).GetMethod("CanAct", Flags);
 
         private ExcelHellPrototype prototype;
         private Button sumButton;
-        private bool tutorialVisible;
-        private bool tutorialShownThisSession;
-        private int tutorialPage;
+        private bool referenceVisible;
+        private int referencePage;
         private GUIStyle titleStyle;
         private GUIStyle bodyStyle;
         private GUIStyle smallStyle;
@@ -51,27 +48,8 @@ namespace ExcelHell.Prototype
             if (current != prototype)
                 Bind(current);
 
-            if (prototype == null)
-            {
-                TutorialOpen = false;
-                return;
-            }
-
-            var levelOne = PrototypeLevelRuntime.CurrentIndex == 0;
-            if (!levelOne && tutorialVisible)
-                CloseTutorial();
-
-            if (tutorialVisible)
-            {
-                TutorialOpen = true;
-                SetSpreadsheetInput(false);
-                CompensateRealtimeClock();
-            }
-            else
-            {
-                TutorialOpen = false;
-                SetSpreadsheetInput(true);
-            }
+            TutorialOpen = referenceVisible && prototype != null;
+            SetSpreadsheetInput(!TutorialOpen);
         }
 
         private void Bind(ExcelHellPrototype owner)
@@ -81,6 +59,7 @@ namespace ExcelHell.Prototype
 
             prototype = owner;
             sumButton = null;
+            referenceVisible = false;
             TutorialOpen = false;
 
             if (prototype == null) return;
@@ -92,19 +71,11 @@ namespace ExcelHell.Prototype
                 sumButton.onClick.RemoveAllListeners();
                 sumButton.onClick.AddListener(OnSum);
             }
-
-            if (PrototypeLevelRuntime.CurrentIndex == 0 && !tutorialShownThisSession)
-            {
-                tutorialShownThisSession = true;
-                tutorialPage = 0;
-                tutorialVisible = true;
-                TutorialOpen = true;
-            }
         }
 
         private void OnSum()
         {
-            if (prototype == null || tutorialVisible) return;
+            if (prototype == null || referenceVisible) return;
             if (CanActMethod == null || !(bool)CanActMethod.Invoke(prototype, null)) return;
 
             var selection = SelectionField?.GetValue(prototype) as List<CellModel>;
@@ -115,8 +86,6 @@ namespace ExcelHell.Prototype
                 return;
             }
 
-            // Empty Normal cells are spreadsheet blanks and are ignored.
-            // Corrupted/Destroyed cells are structural errors, not blanks, and invalidate the range.
             if (selection.Any(cell => cell.State != CellState.Normal))
             {
                 SetStatus(Ru("SUM не проходит через #REF! или уничтоженные клетки. Пустые обычные клетки игнорируются.",
@@ -154,18 +123,6 @@ namespace ExcelHell.Prototype
                 : $"SUM = {FormatNumber(sum)}");
         }
 
-        private void CompensateRealtimeClock()
-        {
-            // Realtime branch uses unscaled delta time. L1 has no anomaly, so compensating
-            // these two fields is enough to make reading the tutorial free for the player.
-            if (ElapsedSecondsField == null || RemainingSecondsField == null) return;
-
-            if (ElapsedSecondsField.GetValue(prototype) is float elapsed)
-                ElapsedSecondsField.SetValue(prototype, Mathf.Max(0f, elapsed - Time.unscaledDeltaTime));
-            if (RemainingSecondsField.GetValue(prototype) is float remaining)
-                RemainingSecondsField.SetValue(prototype, remaining + Time.unscaledDeltaTime);
-        }
-
         private void SetSpreadsheetInput(bool enabled)
         {
             if (prototype == null) return;
@@ -175,10 +132,8 @@ namespace ExcelHell.Prototype
 
         private PrototypeLocalization Localization => LocalizationField?.GetValue(prototype) as PrototypeLocalization;
 
-        private string Ru(string russian, string english)
-        {
-            return Localization?.Language == PrototypeLanguage.English ? english : russian;
-        }
+        private string Ru(string russian, string english) =>
+            Localization?.Language == PrototypeLanguage.English ? english : russian;
 
         private void SetStatus(string value)
         {
@@ -186,9 +141,9 @@ namespace ExcelHell.Prototype
             if (status != null) status.text = value;
         }
 
-        private void CloseTutorial()
+        private void CloseReference()
         {
-            tutorialVisible = false;
+            referenceVisible = false;
             TutorialOpen = false;
             SetSpreadsheetInput(true);
         }
@@ -196,15 +151,15 @@ namespace ExcelHell.Prototype
         private void OnGUI()
         {
             EnsureStyles();
-            if (PrototypeLevelRuntime.CurrentIndex != 0 || prototype == null) return;
+            if (prototype == null) return;
 
-            if (!tutorialVisible)
+            if (!referenceVisible)
             {
-                var label = Ru("?  ОБУЧЕНИЕ", "?  TUTORIAL");
+                var label = Ru("?  СПРАВКА", "?  HELP");
                 if (GUI.Button(new Rect(18, 62, 150, 34), label, buttonStyle))
                 {
-                    tutorialPage = 0;
-                    tutorialVisible = true;
+                    referencePage = 0;
+                    referenceVisible = true;
                     TutorialOpen = true;
                 }
                 return;
@@ -213,106 +168,100 @@ namespace ExcelHell.Prototype
             var width = Mathf.Min(760f, Screen.width - 80f);
             var height = Mathf.Min(500f, Screen.height - 80f);
             var rect = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
+
+            var previousColor = GUI.color;
+            GUI.color = new Color(0.94f, 0.95f, 0.96f, 1f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill);
+            GUI.color = previousColor;
             GUI.Box(rect, GUIContent.none);
 
-            var titleRect = new Rect(rect.x + 30, rect.y + 24, rect.width - 60, 42);
-            GUI.Label(titleRect, TutorialTitle(), titleStyle);
+            GUI.Label(new Rect(rect.x + 30, rect.y + 24, rect.width - 60, 42), ReferenceTitle(), titleStyle);
+            GUI.Label(new Rect(rect.x + 32, rect.y + 82, rect.width - 64, rect.height - 170), ReferenceBody(), bodyStyle);
+            GUI.Label(new Rect(rect.x + 32, rect.yMax - 74, 150, 28), $"{referencePage + 1} / 4", smallStyle);
 
-            var bodyRect = new Rect(rect.x + 32, rect.y + 82, rect.width - 64, rect.height - 170);
-            GUI.Label(bodyRect, TutorialBody(), bodyStyle);
-
-            GUI.Label(new Rect(rect.x + 32, rect.yMax - 74, 150, 28),
-                $"{tutorialPage + 1} / 4", smallStyle);
-
-            if (tutorialPage > 0 && GUI.Button(new Rect(rect.x + 190, rect.yMax - 70, 150, 40),
+            if (referencePage > 0 && GUI.Button(new Rect(rect.x + 190, rect.yMax - 70, 150, 40),
                     Ru("НАЗАД", "BACK"), buttonStyle))
-                tutorialPage--;
+                referencePage--;
 
-            if (tutorialPage < 3)
+            if (referencePage < 3)
             {
                 if (GUI.Button(new Rect(rect.xMax - 190, rect.yMax - 70, 150, 40),
                         Ru("ДАЛЬШЕ", "NEXT"), buttonStyle))
-                    tutorialPage++;
+                    referencePage++;
             }
             else if (GUI.Button(new Rect(rect.xMax - 220, rect.yMax - 70, 180, 40),
-                         Ru("НАЧАТЬ", "START"), buttonStyle))
-            {
-                CloseTutorial();
-            }
+                         Ru("ЗАКРЫТЬ", "CLOSE"), buttonStyle))
+                CloseReference();
         }
 
-        private string TutorialTitle()
+        private string ReferenceTitle()
         {
             var ru = new[]
             {
-                "1. ЧТО НУЖНО СДЕЛАТЬ",
+                "1. ЦЕЛЬ ИГРЫ",
                 "2. SORT — СОБРАТЬ ДАННЫЕ",
                 "3. SUM — ПОСЧИТАТЬ РЕЗУЛЬТАТ",
                 "4. ОСТАЛЬНЫЕ ИНСТРУМЕНТЫ"
             };
             var en = new[]
             {
-                "1. WHAT YOU NEED TO DO",
+                "1. GAME GOAL",
                 "2. SORT — ASSEMBLE DATA",
                 "3. SUM — CALCULATE A RESULT",
                 "4. OTHER TOOLS"
             };
-            return Localization?.Language == PrototypeLanguage.English ? en[tutorialPage] : ru[tutorialPage];
+            return Localization?.Language == PrototypeLanguage.English ? en[referencePage] : ru[referencePage];
         }
 
-        private string TutorialBody()
+        private string ReferenceBody()
         {
             var ru = new[]
             {
-                "Справа перечислены показатели, которые требует отчёт.\n\n" +
-                "Соберите нужные числа из данных таблицы и поместите ответы в соответствующие ЗЕЛЁНЫЕ клетки отчёта. Затем нажмите «ОТПРАВИТЬ ОТЧЁТ».\n\n" +
-                "На первом уровне аномалий нет: здесь можно спокойно разобраться с инструментами. Выделение клеток и диапазонов само по себе ничего не тратит.",
+                "Справа перечислены показатели отчёта. Собирайте нужные данные в рабочие диапазоны, вычисляйте результат и помещайте ответы в ЗЕЛЁНЫЕ клетки отчёта.\n\n" +
+                "Выделение клеток ничего не тратит. Ход расходуется только успешным игровым действием.",
 
-                "SORT здесь работает не как обычная сортировка Excel.\n\n" +
                 "Выберите ОДНУ голубую клетку-ключ и нажмите SORT.\n\n" +
-                "• Ключ параметра («Зарплата», «Часы»...) собирает все значения этого параметра в столбец рядом с ключом — по порядку сотрудников.\n" +
-                "• Ключ-фамилия собирает все параметры одного сотрудника в строку.\n\n" +
-                "Если впереди не хватает непрерывного места, SORT попробует собрать группу с другой стороны. Если мешает чужая клетка или повреждение — получите #SPILL!.",
+                "• Ключ параметра («Зарплата», «Часы»...) собирает значения параметра в столбец рядом с ключом.\n" +
+                "• Ключ-фамилия собирает параметры сотрудника в строку.\n\n" +
+                "<color=#B3261E><b>#SPILL!</b></color> означает, что SORT не может разместить полный диапазон: путь блокирует чужая клетка, повреждение или край листа.",
 
-                "Выделите прямоугольный диапазон, в котором есть МИНИМУМ ДВА числа, и нажмите SUM. Затем выберите пустую клетку для результата.\n\n" +
-                "• Пустые обычные клетки внутри диапазона SUM игнорирует.\n" +
-                "• #REF! или уничтоженная клетка ломают диапазон — через них SUM не работает.\n" +
-                "• На обычном листе SUM СХЛОПЫВАЕТ исходные числа в один результат и удаляет источники.\n" +
-                "• Если целью выбрана зелёная клетка ОТЧЁТА, результат записывается туда, а исходные числа сохраняются.",
+                "Выделите прямоугольный диапазон минимум с ДВУМЯ числами и нажмите SUM.\n\n" +
+                "• Пустые обычные клетки SUM игнорирует.\n" +
+                "• <color=#B3261E><b>#REF!</b></color> и уничтоженные клетки ломают диапазон.\n" +
+                "• SUM на листе схлопывает числа и удаляет источники.\n" +
+                "• SUM прямо в зелёную клетку отчёта сохраняет исходные числа.",
 
-                "ВЫРЕЗАТЬ — забирает один обычный токен в буфер.\n" +
-                "ВСТАВИТЬ — кладёт токен из буфера в пустую обычную клетку.\n" +
-                "УДАЛИТЬ — уничтожает клетку. Позже этой кнопкой можно локализовать #REF!, но уничтоженная клетка остаётся дырой в таблице.\n" +
-                "ОТПРАВИТЬ ОТЧЁТ — проверяет только итоговые числа в зелёных полях.\n\n" +
-                "Зелёная область отчёта защищена от удаления и #REF!. К этой памятке можно вернуться кнопкой «? ОБУЧЕНИЕ»."
+                "ВЫРЕЗАТЬ — забирает токен в буфер.\n" +
+                "ВСТАВИТЬ — кладёт его в пустую обычную клетку.\n" +
+                "УДАЛИТЬ — уничтожает клетку; уничтоженная клетка остаётся дырой. Этим же действием можно локализовать активный <color=#B3261E><b>#REF!</b></color>.\n" +
+                "ОТПРАВИТЬ ОТЧЁТ — проверяет итоговые числа в зелёных полях.\n\n" +
+                "Оранжевая клетка — заранее назначенная точка появления <color=#B3261E><b>#REF!</b></color>. После объявления цель уже не меняется."
             };
 
             var en = new[]
             {
-                "The report requirements are listed on the right.\n\n" +
-                "Derive the required numbers from the worksheet and put each answer into its GREEN report cell. Then press SUBMIT REPORT.\n\n" +
-                "Level 1 has no anomalies: use it to learn the tools. Selecting cells or ranges costs nothing by itself.",
+                "The report requirements are listed on the right. Assemble the needed data into workable ranges, calculate results and place answers into the GREEN report cells.\n\n" +
+                "Selection is free. Only successful gameplay actions spend a turn.",
 
-                "SORT does NOT behave like normal Excel sorting here.\n\n" +
                 "Select ONE blue key cell and press SORT.\n\n" +
-                "• A field key (Salary, Hours...) assembles that field into a column beside the key, in employee order.\n" +
-                "• An employee-name key assembles that employee's fields into a row.\n\n" +
-                "If there is no continuous space ahead, SORT tries the other side. Foreign cells or damage can cause #SPILL!.",
+                "• A field key (Salary, Hours...) assembles that field into a column beside the key.\n" +
+                "• An employee key assembles that employee's fields into a row.\n\n" +
+                "<color=#B3261E><b>#SPILL!</b></color> means SORT cannot place its full span because another cell, damage or the worksheet edge blocks it.",
 
-                "Select a rectangular range containing AT LEAST TWO numbers, press SUM, then choose an empty result cell.\n\n" +
-                "• Normal empty cells inside the range are ignored.\n" +
-                "• #REF! or destroyed cells break the range; SUM cannot cross them.\n" +
-                "• On the worksheet, SUM COLLAPSES its source numbers into one result and consumes the sources.\n" +
-                "• If the target is a green REPORT cell, the answer is written there without consuming the source numbers.",
+                "Select a rectangular range containing at least TWO numbers and press SUM.\n\n" +
+                "• Normal empty cells are ignored.\n" +
+                "• <color=#B3261E><b>#REF!</b></color> and destroyed cells break the range.\n" +
+                "• Worksheet SUM collapses and consumes its sources.\n" +
+                "• SUM directly into a green report cell preserves the source numbers.",
 
-                "CUT — moves one normal token to the clipboard.\n" +
-                "PASTE — places the clipboard token into an empty normal cell.\n" +
-                "DELETE — destroys a cell. Later it can quarantine #REF!, but the destroyed cell remains a hole.\n" +
-                "SUBMIT REPORT — checks only the final numbers in the green fields.\n\n" +
-                "The green report interface is protected from DELETE and #REF!. Reopen this guide with the ? TUTORIAL button."
+                "CUT moves a token into the clipboard.\n" +
+                "PASTE places it into an empty normal cell.\n" +
+                "DELETE destroys a cell and leaves a permanent hole. It can also quarantine an active <color=#B3261E><b>#REF!</b></color>.\n" +
+                "SUBMIT REPORT checks the final numbers in the green fields.\n\n" +
+                "An orange cell is a committed future <color=#B3261E><b>#REF!</b></color> spawn. Once announced, its coordinate no longer changes."
             };
 
-            return Localization?.Language == PrototypeLanguage.English ? en[tutorialPage] : ru[tutorialPage];
+            return Localization?.Language == PrototypeLanguage.English ? en[referencePage] : ru[referencePage];
         }
 
         private void EnsureStyles()
@@ -331,7 +280,7 @@ namespace ExcelHell.Prototype
                 fontSize = 17,
                 alignment = TextAnchor.UpperLeft,
                 wordWrap = true,
-                richText = false
+                richText = true
             };
             smallStyle = new GUIStyle(GUI.skin.label)
             {
