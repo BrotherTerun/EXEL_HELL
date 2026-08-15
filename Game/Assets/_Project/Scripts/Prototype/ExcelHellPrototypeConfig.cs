@@ -18,64 +18,54 @@ namespace ExcelHell.Prototype
     [CreateAssetMenu(fileName = "ExcelHellPrototypeConfig", menuName = "EXEL HELL/Prototype Config")]
     public sealed class ExcelHellPrototypeConfig : ScriptableObject
     {
-        [Header("Field")]
+        [Header("Fallback / debug values")]
         [Min(8)] public int rows = 8;
         [Min(8)] public int columns = 8;
-
-        [Header("Realtime experiment")]
-        [Tooltip("Real seconds available for the whole level. 300 seconds = 5 minutes.")]
         [Min(30f)] public float levelDurationSeconds = 300f;
-        [Tooltip("Real seconds between telegraphed #REF! movement resolutions. Old 15-turn pacing scaled to a 5-minute level gives ~20 seconds per former turn.")]
         [Min(1f)] public float anomalyStepSeconds = 20f;
-        [Tooltip("Real seconds before the first outbreak becomes active.")]
         [Min(1f)] public float firstOutbreakDelaySeconds = 60f;
-        [Tooltip("Real seconds before a new outbreak after every live #REF! disappears.")]
         [Min(1f)] public float respawnDelaySeconds = 40f;
-        [Tooltip("Real seconds before a parallel outbreak while another #REF! is active.")]
         [Min(1f)] public float outbreakDelayWhileActiveSeconds = 60f;
-
-        [Header("Legacy turn values (ignored by realtime branch)")]
-        [Min(1)] public int maxTurns = 15;
-        [Min(0)] public int anomalyActivationTurn = 3;
-        [Min(1)] public int respawnDelayTurns = 2;
-        [Min(1)] public int outbreakDelayWhileActiveTurns = 3;
-
-        [Header("Report goals")]
-        [Tooltip("Select any combination before entering Play Mode.")]
+        [Min(1)] public int corruptionTurnsBeforeDestroy = 2;
         public PrototypeReportGoals reportGoals =
             PrototypeReportGoals.SalaryTotal |
             PrototypeReportGoals.BonusAtLeastFour |
             PrototypeReportGoals.SalaryOfMaxOvertime;
 
-        [Header("#REF! lifecycle")]
-        [Tooltip("How many realtime anomaly movement resolutions a Corrupted cell survives before becoming Destroyed.")]
-        [Min(1)] public int corruptionTurnsBeforeDestroy = 2;
+        [Header("Legacy fallback turn values")]
+        [Min(1)] public int maxTurns = 15;
+        [Min(0)] public int anomalyActivationTurn = 3;
+        [Min(1)] public int respawnDelayTurns = 2;
+        [Min(1)] public int outbreakDelayWhileActiveTurns = 3;
 
-        [Header("Dynamic #REF! spawn")]
-        [Tooltip("Desired Manhattan distance from report-critical data.")]
+        [Header("Fallback dynamic #REF! spawn")]
         [Min(1)] public int spawnPreferredDistance = 2;
-        [Tooltip("Allowed distance deviation around the preferred distance.")]
         [Min(0)] public int spawnDistanceVariation = 1;
-        [Tooltip("Number of equally strong spawn candidates considered before deterministic goal-aware selection.")]
         [Min(1)] public int spawnCandidatePoolSize = 4;
 
         [Header("Prototype debug")]
         public bool showExpectedAnswers = true;
-        [Tooltip("Shows and logs the anchors/candidate pool used by the dynamic #REF! spawn selector.")]
         public bool showSpawnDebug = true;
 
-        public int SafeRows => Mathf.Max(8, rows);
-        public int SafeColumns => Mathf.Max(8, columns);
-        public float SafeLevelDurationSeconds => levelDurationSeconds > 0f ? levelDurationSeconds : 300f;
-        public float SafeAnomalyStepSeconds => anomalyStepSeconds > 0f ? anomalyStepSeconds : 20f;
-        public float SafeFirstOutbreakDelaySeconds => firstOutbreakDelaySeconds > 0f ? firstOutbreakDelaySeconds : 60f;
-        public float SafeRespawnDelaySeconds => respawnDelaySeconds > 0f ? respawnDelaySeconds : 40f;
-        public float SafeActiveOutbreakDelaySeconds => outbreakDelayWhileActiveSeconds > 0f ? outbreakDelayWhileActiveSeconds : 60f;
-        public int SafeCorruptionLifetime => Mathf.Max(1, corruptionTurnsBeforeDestroy);
-        public int SafeSpawnPreferredDistance => Mathf.Max(1, spawnPreferredDistance);
-        public int SafeSpawnDistanceVariation => Mathf.Max(0, spawnDistanceVariation);
-        public int SafeSpawnCandidatePoolSize => Mathf.Max(1, spawnCandidatePoolSize);
+        private PrototypeLevelConfig Level => PrototypeLevelRuntime.Current;
 
-        public bool HasGoal(PrototypeReportGoals goal) => (reportGoals & goal) != 0;
+        public int SafeRows => Mathf.Max(8, Level?.Rows ?? rows);
+        public int SafeColumns => Mathf.Max(8, Level?.Columns ?? columns);
+        public float SafeLevelDurationSeconds => Mathf.Max(30f, Level?.DurationSeconds ?? levelDurationSeconds);
+        public float SafeAnomalyStepSeconds => Mathf.Max(1f, Level?.AnomalyStepSeconds ?? anomalyStepSeconds);
+        public float SafeFirstOutbreakDelaySeconds => Mathf.Max(1f, Level?.FirstOutbreakDelaySeconds ?? firstOutbreakDelaySeconds);
+        public float SafeRespawnDelaySeconds => Mathf.Max(1f, Level?.RespawnDelaySeconds ?? respawnDelaySeconds);
+        public float SafeActiveOutbreakDelaySeconds => Mathf.Max(1f, Level?.ActiveOutbreakDelaySeconds ?? outbreakDelayWhileActiveSeconds);
+        public int SafeCorruptionLifetime => Mathf.Max(1, Level?.CorruptionStepsBeforeDestroy ?? corruptionTurnsBeforeDestroy);
+        public int SafeSpawnPreferredDistance => Mathf.Max(1, Level?.SpawnPreferredDistance ?? spawnPreferredDistance);
+        public int SafeSpawnDistanceVariation => Mathf.Max(0, Level?.SpawnDistanceVariation ?? spawnDistanceVariation);
+        public int SafeSpawnCandidatePoolSize => Mathf.Max(1, Level?.SpawnCandidatePoolSize ?? spawnCandidatePoolSize);
+        public bool RefEnabled => Level?.RefEnabled ?? true;
+
+        public bool HasGoal(PrototypeReportGoals goal)
+        {
+            var selected = Level?.ReportGoals ?? reportGoals;
+            return (selected & goal) != 0;
+        }
     }
 }
