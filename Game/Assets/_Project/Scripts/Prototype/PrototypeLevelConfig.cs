@@ -102,7 +102,7 @@ namespace ExcelHell.Prototype
                     Hours = new[] { 39d, 46d, 34d, 42d, 37d },
                     Salary = new[] { 61d, 57d, 74d, 66d, 52d },
                     Overtime = new[] { 3d, 1d, 6d, 2d, 4d },
-                    Bonus = new[] { 6d, 4d, 8d, 2d, 5d }
+                    Bonus = new[] { 6d, 4d, 8d, 7d, 2d }
                 }
             },
             new PrototypeLevelConfig
@@ -123,7 +123,7 @@ namespace ExcelHell.Prototype
                 ActiveOutbreakDelaySeconds = 60f,
                 Dataset = new PrototypeLevelDataset
                 {
-                    Hours = new[] { 43d, 38d, 35d, 46d, 37d },
+                    Hours = new[] { 38d, 43d, 35d, 46d, 37d },
                     Salary = new[] { 62d, 69d, 76d, 54d, 71d },
                     Overtime = new[] { 2d, 4d, 7d, 1d, 5d },
                     Bonus = new[] { 3d, 7d, 5d, 9d, 4d }
