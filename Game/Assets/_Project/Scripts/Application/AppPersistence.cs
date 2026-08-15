@@ -19,7 +19,7 @@ namespace ExcelHell.Application
     [Serializable]
     public sealed class AppSettingsData
     {
-        public int Version = 1;
+        public int Version = 2;
         public float MasterVolume = 1f;
         public float MusicVolume = 0.8f;
         public float SfxVolume = 0.9f;
@@ -27,6 +27,7 @@ namespace ExcelHell.Application
         public bool VSync = true;
         public int ResolutionWidth;
         public int ResolutionHeight;
+        public string LanguageCode = "ru";
     }
 
     public static class AppPersistence
@@ -120,6 +121,8 @@ namespace ExcelHell.Application
             }
 
             settings ??= DefaultSettings();
+            settings.Version = 2;
+            settings.LanguageCode = NormalizeLanguageCode(settings.LanguageCode);
             if (settings.ResolutionWidth <= 0 || settings.ResolutionHeight <= 0)
             {
                 settings.ResolutionWidth = Screen.currentResolution.width;
@@ -131,6 +134,8 @@ namespace ExcelHell.Application
         public static void SaveSettings(AppSettingsData settings)
         {
             if (settings == null) return;
+            settings.Version = 2;
+            settings.LanguageCode = NormalizeLanguageCode(settings.LanguageCode);
             try
             {
                 SaveJson(SettingsPath, settings);
@@ -148,8 +153,14 @@ namespace ExcelHell.Application
                 ResolutionWidth = Screen.currentResolution.width,
                 ResolutionHeight = Screen.currentResolution.height,
                 Fullscreen = Screen.fullScreen,
-                VSync = QualitySettings.vSyncCount > 0
+                VSync = QualitySettings.vSyncCount > 0,
+                LanguageCode = "ru"
             };
+        }
+
+        public static string NormalizeLanguageCode(string value)
+        {
+            return string.Equals(value, "en", StringComparison.OrdinalIgnoreCase) ? "en" : "ru";
         }
 
         private static T LoadJson<T>(string path, T fallback) where T : class
@@ -175,6 +186,7 @@ namespace ExcelHell.Application
     public static class AppSettingsService
     {
         public static AppSettingsData Current { get; private set; }
+        public static event Action<string> LanguageChanged = delegate { };
 
         public static void LoadAndApply()
         {
@@ -185,10 +197,12 @@ namespace ExcelHell.Application
         public static void Apply(AppSettingsData settings, bool persist = true)
         {
             if (settings == null) return;
-            Current = settings;
+            settings.Version = 2;
+            settings.LanguageCode = AppPersistence.NormalizeLanguageCode(settings.LanguageCode);
             settings.MasterVolume = Mathf.Clamp01(settings.MasterVolume);
             settings.MusicVolume = Mathf.Clamp01(settings.MusicVolume);
             settings.SfxVolume = Mathf.Clamp01(settings.SfxVolume);
+            Current = settings;
 
             AudioListener.volume = settings.MasterVolume;
             QualitySettings.vSyncCount = settings.VSync ? 1 : 0;
@@ -197,6 +211,7 @@ namespace ExcelHell.Application
             if (settings.ResolutionWidth > 0 && settings.ResolutionHeight > 0)
                 Screen.SetResolution(settings.ResolutionWidth, settings.ResolutionHeight, mode);
 
+            LanguageChanged(settings.LanguageCode);
             if (persist) AppPersistence.SaveSettings(settings);
         }
 
