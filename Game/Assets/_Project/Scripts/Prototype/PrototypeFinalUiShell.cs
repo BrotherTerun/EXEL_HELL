@@ -23,6 +23,15 @@ namespace ExcelHell.Prototype
         private const float FormulaWidth = 1124f;
         private const float FormulaHeight = 34f;
 
+        // The authored wall clock begins at roughly 71.4% of the office master image.
+        // With the approved large worksheet that landmark would otherwise sit underneath the app.
+        // Pan only the office art (and art-bound anchors) to the right; the worksheet remains fixed.
+        private const float OfficeClockArtMinX = 0.714f;
+        private const float OfficeSafeGap = 18f;
+        private static float OfficeArtPanX => Mathf.Max(
+            0f,
+            AppX + AppWidth + OfficeSafeGap - OfficeClockArtMinX * ReferenceWidth);
+
         private ExcelHellPrototype prototype;
         private Canvas canvas;
         private RectTransform background;
@@ -102,7 +111,7 @@ namespace ExcelHell.Prototype
             ApplyWorksheetGeometry();
             HideLegacyChrome();
             applied = true;
-            Debug.Log("[UI-SHELL] Visual shell v1.2 applied: full worksheet scale, office clock anchor and expanded protagonist stage.");
+            Debug.Log($"[UI-SHELL] Visual shell v1.3 applied: full worksheet with office-art pan {OfficeArtPanX:0.#}px.");
         }
 
         private void ApplyBackground()
@@ -159,11 +168,12 @@ namespace ExcelHell.Prototype
             officeClock.transform.SetParent(chromeRoot.transform, false);
             // Matches the dark digital wall display in the 1672x941 office master image.
             SetNormalizedRegion(officeClock.GetComponent<RectTransform>(), 0.714f, 0.734f, 0.861f, 0.823f);
+            officeClock.GetComponent<RectTransform>().anchoredPosition = new Vector2(OfficeArtPanX, 0f);
 
             var avatar = new GameObject("Avatar Reserved", typeof(RectTransform));
             avatar.transform.SetParent(chromeRoot.transform, false);
-            // Matches the lower-right workstation region; normalized anchors keep it attached to the art
-            // when the Game view is wider than the 1600x900 safe frame.
+            // Avatar is a presentation sprite rather than a painted landmark, so it stays in the stable
+            // gameplay-safe region while only the office art underneath is panned.
             SetNormalizedRegion(avatar.GetComponent<RectTransform>(), 0.67f, 0.04f, 0.94f, 0.46f);
         }
 
@@ -171,7 +181,9 @@ namespace ExcelHell.Prototype
         {
             var go = new GameObject("Office Backdrop", typeof(RectTransform), typeof(RawImage));
             go.transform.SetParent(chromeRoot.transform, false);
-            Stretch(go.GetComponent<RectTransform>());
+            var backdropRect = go.GetComponent<RectTransform>();
+            Stretch(backdropRect);
+            backdropRect.anchoredPosition = new Vector2(OfficeArtPanX, 0f);
 
             var image = go.GetComponent<RawImage>();
             image.raycastTarget = false;
@@ -188,7 +200,7 @@ namespace ExcelHell.Prototype
             if (texture != null)
             {
                 texture.filterMode = FilterMode.Point;
-                Debug.Log($"[VISUAL] Office backdrop ready ({texture.width}x{texture.height}).");
+                Debug.Log($"[VISUAL] Office backdrop ready ({texture.width}x{texture.height}), pan={OfficeArtPanX:0.#}.");
             }
             else
             {
