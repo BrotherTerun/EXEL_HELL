@@ -134,7 +134,11 @@ namespace ExcelHell.Prototype
 
         public string Address => $"{ExcelHellPrototype.ColumnName(Column)}{Row + 1}";
         public bool IsEmpty => Occupant == null;
-        public bool IsFormula => Formula != FormulaKind.None;
+
+        // #REF! overrides formula-field protection while the cell is corrupted/destroyed. The authored Formula
+        // value remains on the coordinate for bookkeeping, but it is not functionally a protected formula cell
+        // outside the Normal state, so quarantine DELETE can remove it through the ordinary gameplay path.
+        public bool IsFormula => State == CellState.Normal && Formula != FormulaKind.None;
         public bool CanActivateFormula => State == CellState.Normal && IsFormula && Occupant == null;
     }
 

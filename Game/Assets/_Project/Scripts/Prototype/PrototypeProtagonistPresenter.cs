@@ -8,8 +8,8 @@ namespace ExcelHell.Prototype
 {
     /// <summary>
     /// Protagonist presentation endpoint. The approved Player sheet supplies authored key poses while this
-    /// presenter adds a lightweight pose scheduler and integer micro-motion. NarrativeLayer contracts stay
-    /// unchanged, so later animation polish can evolve independently from gameplay and authored narrative.
+    /// presenter adds a lightweight pose scheduler, level baseline moods and one-shot reaction cycles.
+    /// NarrativeLayer contracts stay unchanged and gameplay state is never delayed by animation.
     /// </summary>
     [DefaultExecutionOrder(1950)]
     public sealed class PrototypeProtagonistPresenter : MonoBehaviour, INarrativeEffectReceiver
@@ -38,7 +38,11 @@ namespace ExcelHell.Prototype
         private Sprite[] alarmedFrames;
         private Sprite[] psychoticFrames;
 
+        private ProtagonistMood baselineMood = ProtagonistMood.Normal;
         private ProtagonistMood currentMood = ProtagonistMood.Normal;
+        private string baselineLevelId;
+        private bool reactionActive;
+        private int reactionCyclesRemaining;
         private int poseSequenceCursor;
         private float nextPoseAt;
         private float nextMicroMotionAt;
@@ -60,6 +64,7 @@ namespace ExcelHell.Prototype
             if (current != prototype) Bind(current);
             BindRunner();
             if (prototype != null && bubble == null) TryBuild();
+            RefreshBaselineMood();
             if (activeTicket != null && !activeShown) TryShowActive();
             TickProtagonistAnimation();
         }
@@ -74,6 +79,11 @@ namespace ExcelHell.Prototype
             avatarSlot = null;
             protagonistImage = null;
             protagonistRect = null;
+            baselineLevelId = null;
+            baselineMood = ProtagonistMood.Normal;
+            currentMood = ProtagonistMood.Normal;
+            reactionActive = false;
+            reactionCyclesRemaining = 0;
             DestroyBubble();
             if (prototype != null)
                 canvas = prototype.GetComponentsInChildren<Canvas>(true).FirstOrDefault();
@@ -98,7 +108,7 @@ namespace ExcelHell.Prototype
             EnsureMoodSprites();
             BuildProtagonistImage();
             BuildBubble();
-            SetMood(ProtagonistMood.Normal);
+            RefreshBaselineMood(true);
         }
 
         private void EnsureMoodSprites()
@@ -123,51 +133,53 @@ namespace ExcelHell.Prototype
 
             playerSheet.filterMode = FilterMode.Point;
 
-            // Rect coordinates are bottom-left based. Each row keeps one shared baseline and crop height so
-            // swapping authored poses does not move the chair/floor contact point. The right side of each row
-            // contains sheet/reference material and is intentionally excluded.
+            // All production crops use exactly the same 232x190 footprint. Coordinates were tightened against
+            // the authored 1536x1024 sheet so adjacent labels/portraits never flash into the animation while
+            // the common size keeps the desk/chair scale stable between poses and moods.
             normalFrames = new[]
             {
-                Crop("Protagonist_Normal_0", new Rect(185f, 819f, 245f, 195f)),
-                Crop("Protagonist_Normal_1", new Rect(425f, 819f, 245f, 195f)),
-                Crop("Protagonist_Normal_2", new Rect(675f, 819f, 245f, 195f)),
-                Crop("Protagonist_Normal_3", new Rect(915f, 819f, 245f, 195f))
+                Crop("Protagonist_Normal_0", new Rect(194f, 822f, 232f, 190f)),
+                Crop("Protagonist_Normal_1", new Rect(432f, 822f, 232f, 190f)),
+                Crop("Protagonist_Normal_2", new Rect(680f, 822f, 232f, 190f)),
+                Crop("Protagonist_Normal_3", new Rect(918f, 822f, 232f, 190f))
             };
 
             tiredFrames = new[]
             {
-                Crop("Protagonist_Tired_0", new Rect(180f, 614f, 250f, 195f)),
-                Crop("Protagonist_Tired_1", new Rect(415f, 614f, 250f, 195f)),
-                Crop("Protagonist_Tired_2", new Rect(670f, 614f, 250f, 195f)),
-                Crop("Protagonist_Tired_3", new Rect(915f, 614f, 250f, 195f))
+                Crop("Protagonist_Tired_0", new Rect(188f, 620f, 232f, 190f)),
+                Crop("Protagonist_Tired_1", new Rect(424f, 620f, 232f, 190f)),
+                Crop("Protagonist_Tired_2", new Rect(676f, 620f, 232f, 190f)),
+                Crop("Protagonist_Tired_3", new Rect(920f, 620f, 232f, 190f))
             };
 
             alarmedFrames = new[]
             {
-                Crop("Protagonist_Alarmed_0", new Rect(190f, 414f, 250f, 205f)),
-                Crop("Protagonist_Alarmed_1", new Rect(455f, 414f, 250f, 205f)),
-                Crop("Protagonist_Alarmed_2", new Rect(730f, 414f, 250f, 205f))
+                Crop("Protagonist_Alarmed_0", new Rect(206f, 427f, 232f, 190f)),
+                Crop("Protagonist_Alarmed_1", new Rect(472f, 427f, 232f, 190f)),
+                Crop("Protagonist_Alarmed_2", new Rect(742f, 427f, 232f, 190f))
             };
 
             psychoticFrames = new[]
             {
-                Crop("Protagonist_Psychotic_0", new Rect(185f, 214f, 255f, 210f)),
-                Crop("Protagonist_Psychotic_1", new Rect(430f, 214f, 255f, 210f)),
-                Crop("Protagonist_Psychotic_2", new Rect(680f, 214f, 255f, 210f)),
-                Crop("Protagonist_Psychotic_3", new Rect(925f, 214f, 255f, 210f))
+                Crop("Protagonist_Psychotic_0", new Rect(193f, 235f, 232f, 190f)),
+                Crop("Protagonist_Psychotic_1", new Rect(442f, 235f, 232f, 190f)),
+                Crop("Protagonist_Psychotic_2", new Rect(691f, 235f, 232f, 190f)),
+                Crop("Protagonist_Psychotic_3", new Rect(932f, 235f, 232f, 190f))
             };
 
-            Debug.Log($"[PROTAGONIST/ANIM] Visual sheet ready ({playerSheet.width}x{playerSheet.height}); 15 authored poses prepared.");
+            Debug.Log($"[PROTAGONIST/ANIM] Visual sheet ready ({playerSheet.width}x{playerSheet.height}); 15 tightened authored poses prepared.");
         }
 
         private Sprite Crop(string spriteName, Rect rect)
         {
             if (playerSheet == null) return null;
+            var x = Mathf.Clamp(rect.x, 0f, playerSheet.width - 1f);
+            var y = Mathf.Clamp(rect.y, 0f, playerSheet.height - 1f);
             var clamped = new Rect(
-                Mathf.Clamp(rect.x, 0f, playerSheet.width - 1f),
-                Mathf.Clamp(rect.y, 0f, playerSheet.height - 1f),
-                Mathf.Min(rect.width, playerSheet.width - rect.x),
-                Mathf.Min(rect.height, playerSheet.height - rect.y));
+                x,
+                y,
+                Mathf.Min(rect.width, playerSheet.width - x),
+                Mathf.Min(rect.height, playerSheet.height - y));
             var sprite = Sprite.Create(playerSheet, clamped, new Vector2(0.5f, 0f), 100f, 0, SpriteMeshType.FullRect);
             sprite.name = spriteName;
             return sprite;
@@ -232,7 +244,7 @@ namespace ExcelHell.Prototype
 
             var effect = activeTicket.Request.Effect;
             bubbleText.text = effect.text ?? string.Empty;
-            SetMood(effect.mood);
+            PlayReaction(effect.mood, 1);
             bubble.SetActive(true);
             bubble.transform.SetAsLastSibling();
             activeShown = true;
@@ -248,7 +260,61 @@ namespace ExcelHell.Prototype
             return true;
         }
 
+        /// <summary>
+        /// Explicit external baseline override. Authored protagonist lines use one-shot reactions instead.
+        /// </summary>
         public void SetMood(ProtagonistMood mood)
+        {
+            baselineMood = mood;
+            baselineLevelId = PrototypeLevelRuntime.Current?.Id ?? string.Empty;
+            reactionActive = false;
+            reactionCyclesRemaining = 0;
+            SetActiveMood(mood);
+        }
+
+        private void RefreshBaselineMood(bool force = false)
+        {
+            var levelId = PrototypeLevelRuntime.Current?.Id ?? string.Empty;
+            var desired = BaselineMoodForLevel(levelId);
+            if (!force && string.Equals(levelId, baselineLevelId, System.StringComparison.OrdinalIgnoreCase) && desired == baselineMood)
+                return;
+
+            baselineLevelId = levelId;
+            baselineMood = desired;
+            reactionActive = false;
+            reactionCyclesRemaining = 0;
+            SetActiveMood(baselineMood);
+            Debug.Log($"[PROTAGONIST/ANIM] Baseline level={levelId} mood={baselineMood}.");
+        }
+
+        private static ProtagonistMood BaselineMoodForLevel(string levelId)
+        {
+            levelId ??= string.Empty;
+            if (levelId.StartsWith("04_", System.StringComparison.OrdinalIgnoreCase)) return ProtagonistMood.Psychotic;
+            if (levelId.StartsWith("03_", System.StringComparison.OrdinalIgnoreCase)) return ProtagonistMood.Tired;
+            return ProtagonistMood.Normal;
+        }
+
+        private void PlayReaction(ProtagonistMood mood, int cycles)
+        {
+            if (mood == baselineMood) return;
+
+            reactionActive = true;
+            reactionCyclesRemaining = Mathf.Max(1, cycles);
+            SetActiveMood(mood);
+            Debug.Log($"[PROTAGONIST/ANIM] Reaction mood={mood} cycles={reactionCyclesRemaining} baseline={baselineMood}.");
+        }
+
+        private void FinishReaction()
+        {
+            if (!reactionActive) return;
+            reactionActive = false;
+            reactionCyclesRemaining = 0;
+            SetActiveMood(baselineMood);
+            Debug.Log($"[PROTAGONIST/ANIM] Reaction complete; restored baseline={baselineMood}.");
+        }
+
+        private void SetActiveMood(ProtagonistMood mood)
         {
             currentMood = mood;
             ResetAnimationState();
@@ -275,7 +341,22 @@ namespace ExcelHell.Prototype
             if (now >= nextPoseAt)
             {
                 var sequence = CurrentSequence();
-                poseSequenceCursor = (poseSequenceCursor + 1) % sequence.Length;
+                var nextCursor = poseSequenceCursor + 1;
+                if (nextCursor >= sequence.Length)
+                {
+                    if (reactionActive)
+                    {
+                        reactionCyclesRemaining--;
+                        if (reactionCyclesRemaining <= 0)
+                        {
+                            FinishReaction();
+                            return;
+                        }
+                    }
+                    nextCursor = 0;
+                }
+
+                poseSequenceCursor = nextCursor;
                 ApplyPose(sequence[poseSequenceCursor]);
                 ScheduleNextPose();
             }
@@ -328,10 +409,10 @@ namespace ExcelHell.Prototype
         {
             var delay = currentMood switch
             {
-                ProtagonistMood.Tired => Random.Range(0.95f, 2.15f),
+                ProtagonistMood.Tired => Random.Range(0.70f, 1.55f),
                 ProtagonistMood.Alarmed => Random.Range(0.38f, 0.82f),
                 ProtagonistMood.Psychotic => Random.Range(0.14f, 0.42f),
-                _ => Random.Range(0.72f, 1.65f)
+                _ => Random.Range(0.55f, 1.25f)
             };
             nextPoseAt = Time.unscaledTime + delay;
         }
@@ -340,10 +421,10 @@ namespace ExcelHell.Prototype
         {
             var delay = currentMood switch
             {
-                ProtagonistMood.Tired => Random.Range(0.9f, 1.8f),
-                ProtagonistMood.Alarmed => Random.Range(0.22f, 0.5f),
+                ProtagonistMood.Tired => Random.Range(0.75f, 1.50f),
+                ProtagonistMood.Alarmed => Random.Range(0.22f, 0.50f),
                 ProtagonistMood.Psychotic => Random.Range(0.07f, 0.18f),
-                _ => Random.Range(0.65f, 1.35f)
+                _ => Random.Range(0.55f, 1.10f)
             };
             nextMicroMotionAt = Time.unscaledTime + delay;
         }

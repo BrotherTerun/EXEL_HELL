@@ -75,8 +75,6 @@ namespace ExcelHell.Prototype
                     Text = text,
                     Rect = rect,
                     BasePosition = rect.anchoredPosition,
-                    BaseScale = rect.localScale,
-                    BaseFontSize = text.fontSize,
                     LastObservedText = text.text ?? string.Empty,
                     SettledAt = Time.unscaledTime,
                     Seed = StableHash(root.name + ":" + id),
@@ -102,7 +100,7 @@ namespace ExcelHell.Prototype
                 {
                     state.BaseText = StripCombining(current);
                     state.IdleReady = true;
-                    state.NextPulseAt = Time.unscaledTime + 0.18f;
+                    state.NextPulseAt = Time.unscaledTime + 0.28f;
                 }
                 return;
             }
@@ -168,23 +166,21 @@ namespace ExcelHell.Prototype
 
         private static void ApplyJitter(MessageState state)
         {
-            var t = Time.unscaledTime * (6.8f + (state.Seed & 3u));
-            var strength = CurrentDay() >= 4 ? 3.4f : CurrentDay() == 3 ? 2.5f : 1.7f;
+            // Keep the message visibly unstable without the old breathing/zoom effect. Only the glyph corruption
+            // and a small positional drift remain; scale and font size stay fixed after typewriter completion.
+            var t = Time.unscaledTime * (5.4f + (state.Seed & 3u));
+            var strength = CurrentDay() >= 4 ? 2.4f : CurrentDay() == 3 ? 1.8f : 1.25f;
             var x = Mathf.Sin(t * 1.17f) * strength;
-            var y = Mathf.Cos(t * 1.61f) * strength * 0.65f;
+            var y = Mathf.Cos(t * 1.61f) * strength * 0.55f;
             state.Rect.anchoredPosition = state.BasePosition + new Vector2(x, y);
-
-            var pulse = 1f + Mathf.Sin(t * 0.83f) * (CurrentDay() >= 4 ? 0.055f : 0.035f);
-            state.Rect.localScale = Vector3.Scale(state.BaseScale, new Vector3(pulse, 2f - pulse, 1f));
-            state.Text.fontSize = state.BaseFontSize + ((state.Phase % 3) - 1) * (CurrentDay() >= 4 ? 2 : 1);
         }
 
         private static float NextInterval(MessageState state)
         {
             state.Seed = NextHash(state.Seed);
             var t = (state.Seed & 0xFFFFu) / 65535f;
-            // Roughly 2–3 visible recompositions per second, deliberately slower than the twitchiest #REF preset.
-            return Mathf.Lerp(0.28f, 0.48f, t);
+            // About 1.5-2.4 visible recompositions per second: enough to pull attention without reading as a pulse.
+            return Mathf.Lerp(0.42f, 0.68f, t);
         }
 
         private static int CurrentDay()
@@ -278,8 +274,6 @@ namespace ExcelHell.Prototype
             public Text Text;
             public RectTransform Rect;
             public Vector2 BasePosition;
-            public Vector3 BaseScale;
-            public int BaseFontSize;
             public string LastObservedText;
             public string BaseText;
             public float SettledAt;
