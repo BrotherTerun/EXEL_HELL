@@ -1,127 +1,252 @@
-# Типовые цепочки действий — Formula Cells / MVP 0.5
+# Типовые цепочки действий — Formula Cells 2.0 / MVP 0.5
 
 Считаем только действия, которые тратят ход.
 
+## Базовая грамматика управления
+
 Бесплатно:
-- выделение одной клетки или прямоугольного диапазона;
+- click / выбор одной клетки;
+- `Shift + Drag` для выделения прямоугольного диапазона;
 - смена выделения;
 - чтение Formula Bar;
-- наведение/просмотр содержимого.
+- наведение/просмотр содержимого;
+- `SUBMIT` как проверка уже собранного отчёта.
 
 Платно, если действие успешно:
-- активация `=SORT()` — 1 ход;
-- активация `=SUM()` — 1 ход;
-- `CUT` — 1 ход;
-- `PASTE` — 1 ход;
+- `MOVE` одного token в обычную/отчётную клетку — 1 ход;
+- `MOVE` выделенного диапазона — 1 ход;
+- `MOVE` пустой FormulaCell — 1 ход;
+- drop ключа в пустую `=SORT()` — 1 ход;
+- drop выделенного числового диапазона в пустую `=SUM()` — 1 ход;
 - `DELETE` / карантин — 1 ход.
 
-Формульная клетка является целевой координатой операции. Отдельного шага «указать result cell» больше нет: игрок выделяет аргумент и кликает по нужной формульной клетке.
+Невалидный drop не тратит ход.
+
+`CUT/PASTE` больше не являются частью Formula Cells 2.0. `Drag = MOVE`, `Shift+Drag = SELECT`.
+
+## Семантика MOVE
+
+### Обычный token
+
+`source token -> drag -> destination`
+
+Стоимость: **1 ход**.
+
+Путь по таблице не учитывается. Разрешены диагональные перемещения и перемещение «сквозь» занятые клетки; проверяется только конечная позиция.
+
+### Диапазон
+
+После `Shift+Drag` обычный drag из занятой клетки внутри selection переносит весь movable payload выделения с одинаковым offset.
+
+- относительное положение token'ов сохраняется;
+- обычные пустые клетки внутри selection не являются payload;
+- собственные исходные клетки не блокируют сдвиг диапазона;
+- чужой occupant, FormulaCell, `#REF!` или Destroyed в конечном footprint делают drop невалидным.
+
+Стоимость: **1 ход** независимо от числа перемещаемых token'ов.
+
+### FormulaCell
+
+Formula property является отдельным слоем клетки.
+
+- если FormulaCell занята token'ом, первый MOVE переносит **occupant**;
+- пока occupant находится внутри, FormulaCell закреплена;
+- после извлечения occupant пустую FormulaCell можно MOVE в другую пустую доступную клетку;
+- пустую FormulaCell можно наложить на пустую ReportCell;
+- Report property при переносе Formula property остаётся на месте.
+
+Единый lifecycle для SUM и SORT:
+
+`empty formula -> input drop -> occupied formula -> occupant MOVE out -> empty formula -> formula MOVE`
+
+Специальных исключений для SORT нет.
+
+## Формулы активируются только через DROP
+
+Отдельного действия «activate formula» и click-to-activate больше нет.
+
+### SUM
+
+`selected numeric range -> drag -> =SUM()`
+
+Стоимость: **1 ход**.
+
+Условия:
+- минимум 2 numeric token;
+- обычные пустые клетки в прямоугольном selection допустимы;
+- результат появляется как aggregate occupant внутри FormulaCell;
+- обычные numeric sources destructively consumed;
+- occupant ReportCell является persistent operand: SUM читает его, но не уничтожает.
+
+### SORT
+
+`FieldKey/RecordKey -> drag -> =SORT()`
+
+Стоимость: **1 ход**.
+
+- FieldKey spill идёт вниз;
+- RecordKey spill идёт вправо;
+- fallback-направления нет;
+- key становится occupant FormulaCell;
+- пока key внутри, SORT нельзя переносить;
+- для повторного использования key нужно MOVE наружу за 1 ход.
 
 ## Базовые цепочки
 
-1. **Прямая агрегация — 1 ход**  
-   `numeric range → =SUM()`
+1. **MOVE одного значения — 1 ход**  
+   `token -> destination`
 
-2. **Сборка параметра + агрегация — 2 хода**  
-   `FieldKey → =SORT() → resulting range → =SUM()`
+2. **MOVE диапазона — 1 ход**  
+   `selected range -> translated destination`
 
-3. **Сборка записи + агрегация — 2 хода**  
-   `RecordKey → =SORT() → resulting range → =SUM()`
+3. **Прямая агрегация в report-SUM — 1 ход**  
+   `numeric range -> report =SUM()`
 
-4. **Расчистить фиксированный spill + SORT + SUM — 4 хода**  
-   `blocking token → CUT → safe cell → PASTE → key → =SORT() → range → =SUM()`
+4. **Агрегация через workspace-SUM с доставкой результата — 2 хода**  
+   `range -> =SUM(n) -> aggregate MOVE -> ReportCell`
 
-   В MVP 0.5 это важнее, чем раньше: `SORT` больше не ищет fallback-направление. Его lane задан координатой формульного поля.
+   Второй MOVE одновременно доставляет результат и освобождает SUM для повторного использования.
 
-5. **Карантин + SORT + SUM — 3 хода**  
-   `#REF! → DELETE → key → =SORT() → range → =SUM()`
+5. **Сборка параметра — 1 ход**  
+   `FieldKey -> =SORT()`
 
-6. **Эвакуация нужного значения + SORT + SUM — 4 хода**  
-   `required token → CUT → safe cell → PASTE → key → =SORT() → range → =SUM()`
+6. **Сборка параметра + агрегация — 2 хода при готовом report-SUM**  
+   `FieldKey -> =SORT() -> resulting range -> report =SUM()`
 
-7. **Две независимые прямые агрегации — 2 хода**  
-   `range A → =SUM(A) → range B → =SUM(B)`
+7. **Перенос пустой формулы — +1 ход**  
+   `=SUM()/=SORT() -> MOVE -> new coordinate`
 
-8. **Две независимые сборки + две агрегации — 4 хода**  
-   `key A → =SORT(A) → range A → =SUM(A) → key B → =SORT(B) → range B → =SUM(B)`
+8. **Расчистить spill + SORT + SUM — 3 хода**  
+   `blocking token -> MOVE -> safe cell -> key -> =SORT() -> range -> report =SUM()`
 
-9. **Сборка одной проекции → сборка другой проекции → агрегация — 3 хода**  
-   `RecordKey → =SORT(record) → FieldKey → =SORT(field) → range → =SUM()`
+   В старой модели CUT+PASTE делали расчистку двухходовой; Formula Cells 2.0 сжимает само перемещение до одного решения/хода.
 
-   Используется, когда первая проекция нужна для определения записи/параметра, а вторая — для финальной геометрии вычисления. Семантика токенов сохраняется при перемещении между проекциями.
+9. **Карантин + SORT + SUM — 3 хода**  
+   `#REF! -> DELETE -> key -> =SORT() -> range -> report =SUM()`
 
-10. **Спасти готовый/промежуточный token от Intent — +2 хода**  
-    `token → CUT → safe cell → PASTE`
+10. **Эвакуация нужного значения + SORT + SUM — 3 хода**  
+    `required token -> MOVE -> safe cell -> key -> =SORT() -> range -> report =SUM()`
 
-11. **Освободить занятую `=SUM(n)` для повторного использования — +1 или +2 хода**  
-    Если результат больше не нужен: `=SUM(n) → CUT` = +1 ход.  
-    Если результат нужно сохранить: `=SUM(n) → CUT → safe cell → PASTE` = +2 хода.
+11. **Спасти готовый/промежуточный token от Intent — +1 ход**  
+    `token -> MOVE -> safe cell`
 
-    После удаления токена координата снова является пустой `=SUM()`.
+12. **Освободить занятую `=SUM(n)` — +1 ход**  
+    `aggregate -> MOVE -> destination`
 
-12. **Освободить занятую `=SORT(key)` — +1 или +2 хода**  
-    Аналогично SUM: удаляется/переносится содержащийся key-token, но свойство `SORT` остаётся на поле.
+    Если destination является нужной ReportCell, этот же ход одновременно завершает доставку результата.
 
-13. **Два промежуточных subtotal → финальный total — 3 хода**  
-    `range A → =SUM(A) → range B → =SUM(B) → [aggregate A + aggregate B] → =SUM(final)`
+13. **Освободить занятую `=SORT(key)` — +1 ход**  
+    `key -> MOVE -> safe/needed cell`
 
-    Это базовый пример formula dependency. Он нужен, когда один прямой диапазон невозможен из-за геометрии/повреждений или когда level design намеренно заставляет строить промежуточные агрегаты.
+14. **Повторно использовать один SORT для двух ключей — 3 хода до вычислений**  
+    `key A -> =SORT(A) -> key A MOVE out -> key B -> =SORT(B)`
 
-14. **Повторное использование одного SORT-поля для двух ключей — минимум 3 хода до вычислений**  
-    `key A → =SORT(A) → CUT key A из formula cell → key B → =SORT(B)`
+    В отличие от CUT/PASTE отдельного «сохранить key через PASTE» больше нет: сам MOVE уже сохраняет его в destination.
 
-    Если key A нужно сохранить в пространстве, добавляется `PASTE` и цена подготовки становится 4 хода.
+15. **Две независимые прямые агрегации**
 
-## Неизменившиеся базовые цены
+    При двух готовых report-SUM:
+    `range A -> SUM(A) -> range B -> SUM(B)` = **2 хода**.
 
-Главный контрольный пример не должен дорожать из-за новой модели:
+    При одной переиспользуемой workspace-SUM:
+    `range A -> SUM -> aggregate A -> Report A -> range B -> SUM -> aggregate B -> Report B` = **4 хода**.
 
-`Salary Total`:
-1. `Salary key → =SORT()`;
-2. `salary range → report =SUM()`.
+    Это ключевой новый trade-off: FormulaCell, оставленная внутри заполненной ReportCell, становится pinned вместе с результатом и не может быть переиспользована без нарушения уже собранного отчёта.
 
-**Итого: 2 хода**, как в MVP 0.4.
+16. **Две независимые сборки + две агрегации**
 
-Формульные клетки должны добавлять стоимость только там, где появляется реальное пространственное решение: блокировка spill, необходимость переиспользовать координату, промежуточные агрегаты, эвакуация или угроза `#REF!`.
+    Достаточная инфраструктура (`2 SORT`, `2 report-SUM`) — **4 хода**:
+    `key A -> SORT A -> range A -> SUM A -> key B -> SORT B -> range B -> SUM B`.
+
+    Один переиспользуемый SORT добавляет `+1` извлечение key.
+
+    Одна workspace-SUM вместо двух report-SUM добавляет `+2` доставки aggregate в ReportCell.
+
+    `1 SORT + 1 workspace-SUM` даёт **7 ходов** для той же логики.
+
+17. **Два subtotal -> final total**
+
+    При трёх независимых SUM-позициях, включая final report-SUM:
+    `range A -> SUM A -> range B -> SUM B -> [aggregate A + aggregate B] -> SUM final` = **3 хода**.
+
+    При одной workspace-SUM:
+    `range A -> SUM -> aggregate A MOVE out -> range B -> SUM -> aggregate B MOVE out -> [A+B] -> SUM -> final aggregate MOVE to Report` = **6 ходов**.
+
+    Поэтому scarcity формул нельзя считать бесплатным «пространственным интересом»: чрезмерный reuse быстро превращается в action tax.
+
+## Нижние границы для знакомых report goals
+
+Это **семантические lower bounds**, а не готовые уровни. Они предполагают подходящую геометрию, достаточное число формул и отсутствие `#REF!`. Реальный `C0` будущего поля может быть выше из-за relocation, spill, filtering geometry и formula scarcity.
+
+| Goal / набор goals | Нижняя граница | Базовая последовательность |
+|---|---:|---|
+| `SalaryTotal` | 2 | SORT Salary + SUM |
+| `Bonus >= 5` | 4 | SORT Bonus + MOVE двух неподходящих значений + SUM |
+| `SalaryOfMaxOvertime` | 3 | SORT Overtime + SORT Salary + MOVE найденной Salary в Report |
+| `SalaryForHoursBelowForty` | 5 | SORT Hours + SORT Salary + MOVE двух исключённых Salary + SUM |
+| `SalaryTotal + Bonus >= 5` | 6 | 2 SORT + 2 filter MOVE + 2 SUM |
+| `SalaryOfMaxOvertime + SalaryForHoursBelowForty` | 7 + `G_rect` | SORT Overtime + Hours + Salary; direct Salary -> Report; 2 filter MOVE; SUM с persistent report operand |
+| `SalaryForHoursBelowForty + OvertimeTotal + BonusTotal` | 9 | 4 SORT + 2 filter MOVE + 3 SUM |
+
+`G_rect` — дополнительная стоимость геометрии, если persistent operand в первой ReportCell и остальные low-hours Salary нельзя включить в один валидный прямоугольный SUM-range без дополнительного MOVE.
+
+### Чувствительность к scarcity формул
+
+Для знакомых наборов:
+
+| Goal set | Достаточно формул | `1 SORT` | `1 workspace-SUM` | `1 SORT + 1 workspace-SUM` |
+|---|---:|---:|---:|---:|
+| `SalaryTotal + Bonus >= 5` | 6 | 7 | 8 | 9 |
+| `MaxOvertimeSalary + LowHoursSalary` | 7 + `G_rect` | 9 + `G_rect` | 8 + `G_rect` | 10 + `G_rect` |
+| `LowHoursSalary + OvertimeTotal + BonusTotal` | 9 | 12 | 12 | 15 |
+
+Эта таблица — главный предохранитель перед новым level design. Если scarcity добавляет 40–60% действий, формулы начинают обслуживать сами себя вместо того, чтобы создавать пространственные решения.
 
 ## Условная сложность одной цели по минимальной цепочке
 
-- **L0 — 0 ходов:** нужное финальное значение уже находится в требуемой report-cell.
-- **L1 — 1–2 хода:** прямой `=SUM()` или `=SORT() + =SUM()`.
-- **L2 — 3–4 хода:** промежуточный aggregate, смена проекции, расчистка spill, карантин или одна эвакуация.
-- **L3 — 5–7 ходов:** несколько обязательных проекций/перемещений, повторное использование формульной координаты, комбинация нескольких subtotal.
-- **L4 — 8+ ходов:** длинная конфликтующая цепочка; для обычного production-level это уже кандидат на разбиение или увеличение turn budget.
+После сжатия CUT+PASTE в MOVE старые границы нужно немного снизить:
 
-## Goal overlap и destructive SUM
+- **L0 — 0 ходов:** ответ уже находится в требуемой ReportCell;
+- **L1 — 1–2 хода:** прямой SUM, direct MOVE или SORT+SUM;
+- **L2 — 3–4 хода:** filtering, formula/result delivery, одна relocation, одна эвакуация/карантин;
+- **L3 — 5–7 ходов:** несколько проекций, несколько filter MOVE, dependency или обязательный formula reuse;
+- **L4 — 8+ ходов:** длинная составная цепочка; допустима для многозадачного позднего уровня, но не как solo-goal.
+
+## Goal overlap и ReportCell > FormulaCell
 
 Сложность уровня нельзя считать простой суммой solo-cost целей.
 
-Для пары целей нужно отдельно проверить множества исходных токенов:
+Для каждой цели `g`:
+- `S_g` — raw/source tokens, необходимые цели;
+- `S_a ∩ S_b = ∅` — цели независимы по данным;
+- overlap может давать shared preparation;
+- destructive SUM может создавать обязательный порядок.
 
-- `S_g` — raw/source tokens, необходимые цели `g`;
-- если `S_a ∩ S_b = ∅`, цели независимы по данным;
-- если пересечение есть, порядок операций может давать shared preparation или конфликт;
-- если один и тот же raw token должен физически сохраниться для двух финальных результатов, destructive SUM может сделать комбинацию неразрешимой без допустимого промежуточного представления.
+Formula Cells 2.0 добавляет легальный способ разрешать часть overlap без COPY:
 
-Такую комбинацию нельзя маскировать большим turn budget: для balance model она должна получать **hard conflict / C0 = ∞**, пока не найден реальный легальный action sequence.
+> occupant ReportCell является persistent operand.
 
-Это особенно важно для MVP 0.5: formula-cell сама по себе не создаёт копию token и не является механизмом REF/COPY.
+Поэтому token можно сначала MOVE в ReportCell для одной цели, а позже включить эту ReportCell в SUM другой цели. SUM читает значение, но ReportCell сохраняет occupant.
 
-## Что теперь реально повышает сложность уровня
+Это не второй режим SUM: правило исходит из свойства ReportCell и одинаково для всех будущих вычислительных FormulaCell.
+
+Если даже с report-mediated dependency не существует легальной последовательности, задаче назначается `C0 = ∞` и поле редизайнится.
+
+## Что теперь реально повышает сложность
 
 Помимо длины action sequence:
+- число экземпляров `SUM`/`SORT` относительно числа активаций;
+- обязательное извлечение occupant для reuse FormulaCell;
+- число обязательных MOVE самой FormulaCell;
+- количество реально пригодных позиций FormulaCell;
+- spill geometry выбранной позиции SORT;
+- число token MOVE, требуемых для filtering/расчистки;
+- peak staging occupancy после таких MOVE;
+- goal overlap и обязательный порядок;
+- возможность использовать ReportCell как persistent operand;
+- последний ход, когда нужен конкретный token/formula placement;
+- direct outbreak exposure FormulaCell;
+- стоимость эвакуации empty formula (=1) и occupied formula+occupant (обычно до 2);
+- количество outbreak windows, открывающихся до `C0`.
 
-- фиксированное положение `=SORT()` и длина его spill lane;
-- занятые/повреждённые клетки внутри обязательного spill lane;
-- количество доступных формульных координат нужного типа;
-- необходимость очищать занятую formula cell перед повторным использованием;
-- formula dependency depth: сколько промежуточных вычислений необходимо до финального report result;
-- конкуренция целей за одни source tokens;
-- количество безопасных обычных клеток для CUT/PASTE;
-- последний ход, на котором нужен конкретный source token / aggregate / formula coordinate;
-- вероятность, что пустая формульная клетка сама окажется точкой outbreak;
-- время, в течение которого заполненная формульная клетка хранит важный token и становится привлекательной для `#REF!`;
-- стоимость восстановления после потери промежуточного результата или формульной координаты;
-- число параллельных outbreak-окон, которое успевает открыться за минимальную цепочку.
-
-Следующая balance model должна использовать эти параметры вместе с `C0`, а не сводить угрозу к `first spawn + distance`.
+Главный критерий Formula Cells 2.0: дополнительные ходы должны соответствовать **пространственному выбору**, а не обслуживанию формул. Если Formula Handling становится значительной долей `C0`, поле нужно упрощать или увеличивать formula inventory.
