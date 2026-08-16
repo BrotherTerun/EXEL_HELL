@@ -12,6 +12,8 @@ namespace ExcelHell.Prototype
     [DefaultExecutionOrder(2180)]
     public sealed class PrototypeChatScrollPresenter : MonoBehaviour
     {
+        private const float WheelSensitivityMultiplier = 10f;
+
         private GameObject chatWindow;
         private ScrollRect scroll;
         private RectTransform viewport;
@@ -95,10 +97,11 @@ namespace ExcelHell.Prototype
             if (Mathf.Abs(wheelY) <= 0.001f) return;
 
             // Input System reports a conventional mouse-wheel notch as roughly 120 units on Windows.
-            // Keep continuous/high-resolution wheels useful while preventing one event from jumping the whole history.
+            // Wheel input is intentionally amplified independently from scrollbar dragging.
             var wheelSteps = Mathf.Clamp(wheelY / 120f, -4f, 4f);
             if (Mathf.Abs(wheelSteps) < 0.01f)
                 wheelSteps = Mathf.Sign(wheelY) * 0.01f;
+            wheelSteps *= WheelSensitivityMultiplier;
 
             var page = Mathf.Clamp01(Mathf.Abs(viewport.rect.height) /
                                      Mathf.Max(Mathf.Abs(viewport.rect.height), EffectiveContentHeight()));
