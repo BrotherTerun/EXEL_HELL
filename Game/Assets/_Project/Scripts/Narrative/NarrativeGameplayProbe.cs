@@ -26,6 +26,7 @@ namespace ExcelHell.Narrative
         private Button submitButton;
         private int lastTurn = -1;
         private bool firstRefPublished;
+        private bool allGoalsCompletedPublished;
         private bool levelCompletedPublished;
         private readonly HashSet<string> corruptedCells = new();
         private readonly HashSet<string> destroyedCells = new();
@@ -59,6 +60,7 @@ namespace ExcelHell.Narrative
             goals = null;
             lastTurn = -1;
             firstRefPublished = false;
+            allGoalsCompletedPublished = false;
             levelCompletedPublished = false;
             corruptedCells.Clear();
             destroyedCells.Clear();
@@ -135,6 +137,18 @@ namespace ExcelHell.Narrative
 
                 if (cell.State == CellState.Destroyed && destroyedCells.Add(address))
                 {
+                    // Player quarantine/delete resets CorruptionAge to zero before completing the action.
+                    // Natural #REF! expiry leaves the terminal age intact, so this remains read-only while
+                    // allowing narrative to distinguish "the anomaly moved" from a deliberate DELETE.
+                    if (corruptedCells.Contains(address) && cell.CorruptionAge > 0)
+                    {
+                        NarrativeSignals.Publish(new NarrativeTrigger(
+                            NarrativeTriggerType.RefDestroyed,
+                            subjectId: address,
+                            row: cell.Row,
+                            column: cell.Column));
+                    }
+
                     NarrativeSignals.Publish(new NarrativeTrigger(
                         NarrativeTriggerType.CellDestroyed,
                         subjectId: address,
@@ -161,12 +175,30 @@ namespace ExcelHell.Narrative
                     row: goal.TargetRow,
                     column: goal.TargetColumn));
             }
+
+            if (!allGoalsCompletedPublished && goals.Count > 0 && completedGoals.Count >= goals.Count)
+            {
+                allGoalsCompletedPublished = true;
+                NarrativeSignals.Publish(new NarrativeTrigger(
+                    NarrativeTriggerType.AllGoalsCompleted,
+                    subjectId: PrototypeLevelRuntime.Current?.Id));
+            }
         }
 
         private void ObserveLevelCompletion()
         {
             if (levelCompletedPublished) return;
             if (FinishedField?.GetValue(prototype) is not bool finished || !finished) return;
+            if (goals == null || goals.Count == 0) return;
+
+            // The prototype also sets finished=true on deadline. Narrative LevelCompleted is intentionally
+            // success-only: every current ReportGoal must still be satisfied when the run finishes.
+            foreach (var goal in goals)
+            {
+                var target = cells[goal.TargetRow, goal.TargetColumn];
+                if (target.State != CellState.Normal || !goal.IsSatisfiedBy(target.Occupant)) return;
+            }
+
             levelCompletedPublished = true;
             NarrativeSignals.Publish(new NarrativeTrigger(
                 NarrativeTriggerType.LevelCompleted,

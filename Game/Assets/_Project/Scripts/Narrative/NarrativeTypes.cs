@@ -10,8 +10,10 @@ namespace ExcelHell.Narrative
         ActionNumber,
         FirstRefSpawn,
         RefSpread,
+        RefDestroyed,
         CellDestroyed,
         GoalCompleted,
+        AllGoalsCompleted,
         ReportSubmitted,
         LevelCompleted,
         ManualDebug
@@ -24,6 +26,7 @@ namespace ExcelHell.Narrative
         BossChatMessage,
         DepartmentChatMessage,
         Toast,
+        SystemStatus,
         VisualGlitch,
         PsychosisDelta,
         Sound
@@ -62,6 +65,7 @@ namespace ExcelHell.Narrative
     {
         public NarrativeEffectType type;
         [TextArea] public string text;
+        // CellMessage convention: (-1,-1) asks the production presenter to pick a stable empty cell.
         public int row = -1;
         public int column = -1;
         public ProtagonistMood mood = ProtagonistMood.Normal;

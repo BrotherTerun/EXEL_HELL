@@ -9,11 +9,12 @@ namespace ExcelHell.Narrative
     /// Minimal v1 smoke harness. It installs synthetic events temporarily and verifies matching,
     /// once-only behaviour, delayed dispatch, queue order and effect routing without requiring final art.
     /// Synthetic events are removed after the test so they cannot match real gameplay triggers.
+    /// Automatic execution is disabled once authored production content is present; use the ContextMenu manually.
     /// </summary>
     public sealed class NarrativeDebugHarness : MonoBehaviour
     {
         [SerializeField] private bool installSampleEvents = true;
-        [SerializeField] private bool runAutomaticSmokeTest = true;
+        [SerializeField] private bool runAutomaticSmokeTest = false;
 
         private NarrativeEventRunner runner;
         private bool running;
@@ -27,7 +28,6 @@ namespace ExcelHell.Narrative
 
         private IEnumerator RunSmokeTestAfterStartup()
         {
-            // NarrativeLayer is persistent and may bootstrap in Menu. The visual smoke belongs to Gameplay only.
             while (FindFirstObjectByType<ExcelHellPrototype>() == null || PrototypeAuthoringMode.Active)
                 yield return null;
 
@@ -69,8 +69,6 @@ namespace ExcelHell.Narrative
             runner.FireDebug(NarrativeTriggerType.ManualDebug, 1, "smoke.duplicate");
             runner.FireDebug(NarrativeTriggerType.ActionNumber, 3, "smoke.action3");
 
-            // UI branch routes the protagonist sample through the real presenter. Five seconds makes the
-            // bubble deliberately hard to miss while retaining enough test timeout headroom.
             var timeout = Time.realtimeSinceStartup + 8f;
             while (!runner.IsIdle && Time.realtimeSinceStartup < timeout)
                 yield return null;
@@ -92,7 +90,7 @@ namespace ExcelHell.Narrative
                 Debug.LogError($"[NARRATIVE/SELF-TEST] FAIL — {summary}.");
 
             runner.ReplaceEvents(System.Array.Empty<NarrativeEventDefinition>());
-            Debug.Log("[NARRATIVE/TEST] Synthetic events cleared; real gameplay observation only.");
+            Debug.Log("[NARRATIVE/TEST] Synthetic events cleared. Reload the level to restore authored production events.");
             running = false;
         }
 
@@ -167,7 +165,7 @@ namespace ExcelHell.Narrative
             var receiver = root.AddComponent<DebugNarrativeReceiver>();
             root.AddComponent<NarrativeDebugHarness>();
             runner.RegisterReceiver(receiver);
-            Debug.Log("[NARRATIVE] Runtime bootstrap complete. Debug receiver/harness active; visual renderer may override fallback routing.");
+            Debug.Log("[NARRATIVE] Runtime bootstrap complete. Debug receiver/harness active; automatic synthetic smoke disabled.");
 #else
             Debug.Log("[NARRATIVE] Runtime bootstrap complete. Production mode; debug harness disabled.");
 #endif
