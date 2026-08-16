@@ -23,11 +23,9 @@ namespace ExcelHell.Prototype
         private const float FormulaWidth = 1124f;
         private const float FormulaHeight = 34f;
 
-        // The office illustration is decorative and may crop at the viewport edges. Interactive/presentation
-        // landmarks must not depend on the current Canvas aspect: they live in the same 1600x900 safe frame
-        // as the spreadsheet. The painted wall clock begins at ~71.4% of the office master image, so pan
-        // the art until that landmark clears the approved large worksheet.
-        private const float OfficeClockArtMinX = 0.714f;
+        // Interactive/presentation landmarks live in the same 1600x900 safe frame as the spreadsheet.
+        // The office master art itself must stay centered at its authored position: moving the whole image to
+        // clear one landmark makes the desk, walls and character staging visibly drift from the composition.
         private const float OfficeSafeGap = 18f;
         private const float OfficeOuterMargin = 12f;
         private const float OfficeClockTop = 159f;
@@ -38,7 +36,6 @@ namespace ExcelHell.Prototype
 
         private static float OfficeSafeLeft => AppX + AppWidth + OfficeSafeGap;
         private static float OfficeSafeWidth => Mathf.Max(260f, ReferenceWidth - OfficeSafeLeft - OfficeOuterMargin);
-        private static float OfficeArtPanX => Mathf.Max(0f, OfficeSafeLeft - OfficeClockArtMinX * ReferenceWidth);
 
         private ExcelHellPrototype prototype;
         private Canvas canvas;
@@ -46,6 +43,7 @@ namespace ExcelHell.Prototype
         private RectTransform spreadsheet;
         private RectTransform sidebar;
         private RectTransform formulaBar;
+        private RectTransform deleteReserved;
         private RectTransform title;
         private RectTransform legacyTurn;
         private GameObject chromeRoot;
@@ -77,6 +75,7 @@ namespace ExcelHell.Prototype
 
         private void Bind(ExcelHellPrototype owner)
         {
+            DestroyChrome();
             prototype = owner;
             applied = false;
             canvas = null;
@@ -84,9 +83,9 @@ namespace ExcelHell.Prototype
             spreadsheet = null;
             sidebar = null;
             formulaBar = null;
+            deleteReserved = null;
             title = null;
             legacyTurn = null;
-            DestroyChrome();
             if (prototype != null) canvas = prototype.GetComponentsInChildren<Canvas>(true).FirstOrDefault();
         }
 
@@ -119,7 +118,7 @@ namespace ExcelHell.Prototype
             ApplyWorksheetGeometry();
             HideLegacyChrome();
             applied = true;
-            Debug.Log($"[UI-SHELL] Visual shell v1.4 applied: 1600x900 presentation safe frame, office pan {OfficeArtPanX:0.#}px.");
+            Debug.Log("[UI-SHELL] Visual shell v1.5 applied: 1600x900 presentation safe frame, authored office framing restored.");
         }
 
         private void ApplyBackground()
@@ -163,7 +162,7 @@ namespace ExcelHell.Prototype
 
             var formulaRow = CreatePanel(app.transform, "Formula Row Surface", PrototypeVisualTheme.SheetSoft);
             SetTopLeft(formulaRow.rectTransform, 16f, -70f, WorksheetWidth, FormulaHeight);
-            CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1140f, -70f, 64f, FormulaHeight);
+            deleteReserved = CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1140f, -70f, 64f, FormulaHeight);
 
             var worksheetSurface = CreatePanel(app.transform, "Worksheet Surface", PrototypeVisualTheme.Sheet);
             SetTopLeft(worksheetSurface.rectTransform, 16f, -112f, WorksheetWidth, WorksheetHeight);
@@ -189,7 +188,7 @@ namespace ExcelHell.Prototype
             go.transform.SetParent(chromeRoot.transform, false);
             var backdropRect = go.GetComponent<RectTransform>();
             Stretch(backdropRect);
-            backdropRect.anchoredPosition = new Vector2(OfficeArtPanX, 0f);
+            backdropRect.anchoredPosition = Vector2.zero;
 
             var image = go.GetComponent<RawImage>();
             image.raycastTarget = false;
@@ -206,7 +205,7 @@ namespace ExcelHell.Prototype
             if (texture != null)
             {
                 texture.filterMode = FilterMode.Point;
-                Debug.Log($"[VISUAL] Office backdrop ready ({texture.width}x{texture.height}), pan={OfficeArtPanX:0.#}.");
+                Debug.Log($"[VISUAL] Office backdrop ready ({texture.width}x{texture.height}), authored framing (0px pan).");
             }
             else
             {
@@ -233,6 +232,16 @@ namespace ExcelHell.Prototype
             SetTopLeft(formulaBar, WorksheetX, FormulaY, FormulaWidth, FormulaHeight);
             formulaBar.SetAsLastSibling();
 
+            // DEL used to remain inside Spreadsheet App while the formula bar was lifted directly under
+            // Background. That left a perfectly functional Button hidden under the newer worksheet layer.
+            // Keep the real interactive control beside the formula bar in the same render layer.
+            if (deleteReserved != null)
+            {
+                deleteReserved.SetParent(background, false);
+                SetTopLeft(deleteReserved, WorksheetX + FormulaWidth, FormulaY, 64f, FormulaHeight);
+                deleteReserved.SetAsLastSibling();
+            }
+
             var formulaTexts = formulaBar.GetComponentsInChildren<Text>(true);
             var expression = formulaTexts.FirstOrDefault(text => text.text != "fx");
             foreach (var text in formulaTexts)
@@ -254,6 +263,9 @@ namespace ExcelHell.Prototype
 
         private void DestroyChrome()
         {
+            // Delete Reserved is intentionally reparented out of chromeRoot, so clean it up explicitly.
+            if (deleteReserved != null) Destroy(deleteReserved.gameObject);
+            deleteReserved = null;
             if (chromeRoot != null) Destroy(chromeRoot);
             chromeRoot = null;
         }
@@ -275,11 +287,12 @@ namespace ExcelHell.Prototype
             return image;
         }
 
-        private static void CreateReservedButton(Transform parent, string name, string label, float x, float y, float width, float height)
+        private static RectTransform CreateReservedButton(Transform parent, string name, string label, float x, float y, float width, float height)
         {
             var panel = CreatePanel(parent, name, PrototypeVisualTheme.ChromeRaised);
             SetTopLeft(panel.rectTransform, x, y, width, height);
             AddPlaceholderLabel(panel.transform, label, label == "✉" ? 21 : 14, PrototypeVisualTheme.Text);
+            return panel.rectTransform;
         }
 
         private static void AddPlaceholderLabel(Transform parent, string value, int fontSize, Color color)
