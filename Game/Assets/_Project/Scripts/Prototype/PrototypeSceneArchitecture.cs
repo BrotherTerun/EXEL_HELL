@@ -24,6 +24,7 @@ namespace ExcelHell.Prototype
         private void Awake()
         {
             sceneTransitionRequested = false;
+            EnsureMainCamera();
 
             if (role == PrototypeSceneRole.Menu)
             {
@@ -129,6 +130,21 @@ namespace ExcelHell.Prototype
                 CreateService<PrototypeAuthoringGuard>("[AUTHORING] Gameplay Freeze");
                 CreateService<PrototypeLevelConstructor>("[AUTHORING] Level Constructor");
             }
+        }
+
+        private static void EnsureMainCamera()
+        {
+            if (FindFirstObjectByType<Camera>() != null) return;
+
+            var cameraObject = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
+            cameraObject.tag = "MainCamera";
+            cameraObject.transform.position = new Vector3(0f, 0f, -10f);
+
+            var camera = cameraObject.GetComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Color.black;
+            camera.orthographic = true;
+            camera.orthographicSize = 5f;
         }
 
         private T CreateService<T>(string objectName) where T : MonoBehaviour
