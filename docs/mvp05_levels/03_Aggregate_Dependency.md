@@ -1,139 +1,89 @@
-# MVP 0.5 Level 03 — Промежуточные итоги
+# Level 03 — Несходящиеся данные / Inconsistent Data
 
-Роль: проверить `=SUM(n)` как обычный aggregate token внутри формульной оболочки и осмысленность повторного использования SUM-coordinate.
+Роль: первый уровень, где `#REF!` должен реально менять план. Целевой playtest-profile: примерно 2–3 replans за успешную попытку; первое прохождение часто заканчивается рестартом, второе — победой.
 
 ## Параметры
 
-| Параметр | Значение |
-|---|---:|
-| Поле | 8×8 |
-| Turn budget `B` | 12 |
-| First outbreak `F` | 3 |
-| Active outbreak delay `A` | 3 |
-| Respawn delay | 2 |
-| Цели | Salary Total, Bonus Total |
-| Salary Total | 312 |
-| Bonus Total | 27 |
+- Поле: 8×8.
+- Goals: `SalaryOfMaxOvertime`, `SalaryForHoursBelowForty`.
+- Dataset: Hours = 38,43,35,46,37; Salary = 62,69,76,54,71; OT = 2,4,7,1,5.
+- Ответы: max-OT salary = 76; low-hours salaries = 62+76+71 = 209.
+- `B = 11`.
+- `FirstOutbreakTurn = 2`.
+- `ActiveOutbreakDelayTurns = 4`.
+- `RespawnDelayTurns = 3`.
+- Corruption lifetime = 2.
+- Spawn preferred distance = 2 ± 1; pool = 4.
+- Formula inventory: `3 SORT + 1 report-SUM`.
 
-Dataset:
+## Геометрия
 
-| Сотрудник | Часы | Зарплата | Переработка | Премия |
-|---|---:|---:|---:|---:|
-| Иванов | 38 | 63 | 1 | 7 |
-| Петров | 42 | 54 | 4 | 2 |
-| Сидоров | 35 | 71 | 6 | 5 |
-| Волкова | 47 | 58 | 3 | 9 |
-| Ким | 39 | 66 | 2 | 4 |
+Field keys: Salary C1, Hours E1, Overtime G1.
 
-## Стартовое поле
+Три стартовых SORT: `B2`, `D2`, `F2`; lanes `B3:B7`, `D3:D7`, `F3:F7` стартуют чистыми. Данные разбросаны по C/E/G.
 
-|   | A | B | C | D | E | F | G | H |
-|---|---|---|---|---|---|---|---|---|
-| 1 | K:H | K:SAL | K:OT | · | K:B | · | · | REP |
-| 2 | · | · | Σ work | · | S↓ Bonus | · | · | Σ Salary |
-| 3 | 63 | R:Иванов | · | 4 | · | 7 | · | Σ Bonus |
-| 4 | 54 | R:Петров | · | 1 | · | 2 | · | · |
-| 5 | 71 | R:Сидоров | · | 6 | · | 58 | · | · |
-| 6 | · | R:Волкова | · | 3 | · | 66 | · | · |
-| 7 | 38 | 42 | 35 | 47 | · | 39 | · | · |
-| 8 | 9 | 5 | 4 | 2 | · | · | · | · |
+Report:
+- `H2` — plain ReportCell для прямого значения 76;
+- `H5` — ReportCell + SUM для 209;
+- `H3/H4` — обычные staging cells.
 
-Пять Salary-токенов намеренно разбиты на два чистых кластера:
-- `A3:A5 = 63,54,71`;
-- `F5:F6 = 58,66`.
+## Легальная no-REF линия
 
-Прямоугольник, охватывающий оба кластера, содержит ключи/другие числовые данные и поэтому не является валидным прямым SUM без дополнительной дорогой расчистки.
+1. DROP Overtime key -> один SORT.
+2. DROP Hours key -> второй SORT.
+3. DROP Salary key -> третий SORT.
+4. MOVE salary 76 (Sidorov) -> `H2`.
+5. MOVE salary 62 (Ivanov) -> `H3`.
+6. MOVE salary 71 (Kim) -> `H4`.
+7. Shift+Drag `H2:H4`, DROP range -> `H5 =SUM()` => 209.
 
-Примечание к runtime-authoring: ранний черновик таблицы случайно дублировал `K:H` в `D3` и терял одно значение Overtime. В рабочем layout это исправлено: `K:H` существует только в `A1`, а `D3:D6,D8` содержат пять Overtime-токенов `4,1,6,3,2`. На intended action sequence это не влияет.
+`H2` остаётся 76, потому что ReportCell occupant является persistent operand.
 
-Formula cells:
-- `C2 = SUM`, workspace formula, будет использована дважды;
-- `E2 = SORT`, down, для Bonus;
-- `H2 = SUM`, report Salary Total;
-- `H3 = SUM`, report Bonus Total.
+`C_sem = 7`.
+`C0 = 7` для благоприятного порядка/размещения.
+`B = 11`, `R = 4`.
 
-Staging cell для первого salary subtotal: `D2`.
+## Dependency
 
-## Минимальная легальная последовательность
+Множества целей пересекаются по salary Сидорова:
+- max-OT goal использует Sidorov Salary;
+- low-hours goal использует Ivanov + Sidorov + Kim Salary.
 
-Salary chain:
-1. `A3:A5 -> C2 =SUM(188)`.
-2. `CUT C2` — забрать aggregate `188`, оставить `=SUM()`.
-3. `PASTE D2`.
-4. `F5:F6 -> C2 =SUM(124)`.
-5. `C2:D2 -> H2 =SUM(312)`.
+`J = 1/3 ≈ 0.33`.
 
-Bonus chain:
-6. `K:B -> E2 =SORT()`.
-7. `E3:E7 -> H3 =SUM(27)`.
+Тип связи: **report-mediated**. Сначала 76 сдаётся в H2, затем H2 используется неразрушающе внутри SUM для второй цели.
 
-`C0 = 7`.
+Это намеренно проверяет, понимает ли игрок свойство ReportCell без введения COPY.
 
-Ключевой тест: формульное поле `C2` переиспользуется как инфраструктура, а его aggregate-token сначала отделяется через CUT и становится обычным staging data.
+## Formula diagnostics
 
-## Функция balance model
+Base route не требует formula scarcity tax:
+- `F_act = 4`;
+- `F_move = 0` в чистой линии;
+- `F_extract = 0`;
+- `FHL = 0`.
 
-`PL = 100*(0.45*C_n + 0.20*FL + 0.15*SP + 0.10*DI + 0.10*WP)`
+Но movable FormulaCells являются главным defensive option: угрожаемый пустой SORT можно эвакуировать одним MOVE вместо рестарта.
 
-`AT = 100*(0.30*SN + 0.25*Q + 0.15*AP + 0.15*KS + 0.15*OR)`
+Approximate no-anomaly `PL`: normal/involved, ориентир `35–45`.
 
-`D = 0.55*PL + 0.45*AT`
+## Anomaly cadence
 
-### Puzzle metrics
+`N_A = 1 + floor((7 - 2)/4) = 2` outbreak opportunities по грубой модели.
 
-| Метрика | Значение | Причина |
-|---|---:|---|
-| `C0` | 7 | 5-action subtotal chain + Bonus SORT/SUM |
-| `B` | 12 | 5 turns reserve |
-| `R` | 5 | normal |
-| `F_need` | 5 | SUM A, SUM B, final SUM, SORT Bonus, SUM Bonus |
-| `F_reuse` | 1 | workspace C2 reused |
-| `FL` | 0.20 | 1/5 |
-| `SP` | 0 | Bonus spill initially clear |
-| `DI` | 0 | final goals use independent raw fields |
-| `OC` | 1 | salary subtotal A must be removed before subtotal B in same formula coordinate |
-| `WP` | 0.05 | one required staging cell |
+Дополнительно каждый активный очаг генерирует movement intent, поэтому фактических решений «оставить / эвакуировать / поменять порядок» ожидается больше, чем `N_A`.
 
-`C_n = 7/12 = 0.583`.
+Целевой `AT`: примерно `40–55`, уточняется после фактического Unity trace.
 
-`PL ≈ 30.8`.
+## Ожидаемое поведение
 
-`OC` is kept as a diagnostic rather than added again to PL, because its action cost is already present in `C0`/`FL`.
+Первая попытка должна научить неприятному факту: если выполнить три SORT в привычном порядке и оставить критичную инфраструктуру/данные на траектории intent, исходный план может перестать быть оптимальным.
 
-### Critical lifetime estimate
+Хорошее прохождение должно допускать несколько ответов:
+- ускорить использование угрожаемого SORT;
+- MOVE пустой SORT в другой пригодный участок;
+- изменить порядок Hours/Salary/Overtime;
+- эвакуировать конкретный critical token;
+- потратить DELETE на очаг, если это выгоднее двух дальнейших реакций.
 
-| Сущность | `U_e` | `T_e` | `S_e` | `O_e` | Recovery `K_e` |
-|---|---:|---:|---:|---:|---:|
-| C2 workspace SUM | 4 | 5 | +1 | 1 | ∞ if destroyed before action 4 |
-| subtotal 188 at D2 | 5 | 5 | 0 | 0 | 3 |
-| subtotal 124 at C2 | 5 | 5 | 0 | 0 | 1–2 |
-| H2 report SUM | 5 | 6 | +1 | 1 | ∞ |
-| E2 Bonus SORT | 6 | 7 | +1 | 1 | ∞ |
-| Bonus sources | 7 | 7 | 0 | 0 | ∞ |
-| H3 report SUM | 7 | 8 | +1 | 1 | ∞ |
-
-Authoring values used for the scalar estimate:
-- `S_min = 0`;
-- `Q = 0.40`;
-- `OR = 0.20`;
-- `N_A = 1 + floor((7-3)/3) = 2`;
-- `AP = 0.67`;
-- `KS = 0.35`;
-- `SN = (2-0)/5 = 0.40`.
-
-`AT ≈ 40.3`.
-
-`D ≈ 35.0`.
-
-## Почему этот уровень нужен отдельно
-
-Он изолирует вопрос, которого нет в Level 02:
-
-> Является ли `field -> token -> CUT -> field remains formula` понятной и полезной моделью, или игрок воспринимает повторное использование formula cell как техническую возню?
-
-## Ожидаемый тест
-
-- понимает ли игрок после CUT, что `C2` снова `=SUM()`;
-- воспринимает ли `188` после PASTE как обычный aggregate-token;
-- естественно ли складывать два subtotal в final report SUM;
-- создаёт ли угроза subtotal реальное решение «сохранить/ускориться», а не только случайный проигрыш.
+Если после теста выяснится, что существует одна доминирующая линия, полностью игнорирующая anomaly, L3 недодавлен. Если потеря одного раннего объекта почти всегда делает задачу математически невозможной — передавлен.

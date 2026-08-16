@@ -1,13 +1,22 @@
-# MVP 0.5 redesigned progression
+# MVP 0.5 / Formula Cells 2.0 — four-level playtest progression
 
-Implementation note for the next formula-cell playtest pass.
+Source of truth for runtime coordinates and timings: `PrototypeLevelConfig.cs`.
 
-The experiment now uses five levels:
+This pass intentionally uses four levels only. The progression tests one question at a time:
 
-1. Formula Reconciliation — tutorial, Salary Total + Overtime Total, no #REF!.
-2. Routine Report — original MVP 0.4 goals Salary Total + Bonus >= 5, no #REF!.
-3. Urgent Reconciliation — the same goal structure under light #REF! pressure, with a spare SORT coordinate.
-4. Inconsistent Data — original semantic goals Salary of max-overtime employee + Salary for Hours < 40. The first report target is a plain protected ReportCell; the second is a protected ReportCell + SUM. Report values are persistent SUM operands.
-5. Final Reconciliation — original final goals Salary for Hours < 40 + Overtime Total + Bonus Total. Bonus starts as an already contiguous range; Hours/Salary/Overtime use three SORT lanes plus one spare SORT lane. #REF! begins later than in the previous stress-test layout.
+1. **Training Reconciliation** — learn `Drag=MOVE`, `Shift+Drag=SELECT`, DROP activation and movable FormulaCells with no anomaly.
+2. **Watched Reconciliation** — exactly the same puzzle and goals; one late #REF! window adds light pressure but should usually not require a response.
+3. **Inconsistent Data** — two semantic goals with a report-mediated dependency; #REF! should force roughly 2–3 plan changes over a successful run. Target: often pass on the second attempt.
+4. **Final Reconciliation** — three-goal composition with real anomaly pressure. Target: several meaningful replans and roughly 3–4 attempts for a clean first-time player before mastery.
 
-This note is intentionally short; runtime LevelConfig is the source of truth for exact coordinates and timings.
+## FC2 authoring constraints
+
+- `MOVE` costs 1 action; selection is free.
+- Formula activation happens only by DROP.
+- Filled FormulaCell is anchored until its occupant is moved out.
+- Empty FormulaCell may move.
+- ReportCell occupant is a persistent formula operand.
+- Formula scarcity must not become maintenance tax: preferred `FHL <= 0.25` and scarcity should not raise `C0` more than ~35% over `C_sem` without a real spatial choice.
+- Exact anomaly difficulty remains a playtest hypothesis until the deterministic spawn/intent trace is observed in Unity.
+
+The old five-level notes are superseded by the four authoring sheets in this directory.

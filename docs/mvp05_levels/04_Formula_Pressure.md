@@ -1,152 +1,95 @@
-# MVP 0.5 Level 04 — Формулы под давлением
+# Level 04 — Финальная сверка / Final Reconciliation
 
-Роль: поздний pressure-test новой модели — semantic subset + две независимые суммы, две переиспользуемые SORT-coordinate и ранний `#REF!`.
+Роль: трёхцелевая композиция, где anomaly является полноценным противником. Целевой first-contact profile: игрок может потребовать 3–4 попытки до уверенной победы, но причина поражения должна быть понятной и связанной с планом, а не с необратимым случайным hard-lock.
 
 ## Параметры
 
-| Параметр | Значение |
-|---|---:|
-| Поле | 8×8 |
-| Turn budget `B` | 18 |
-| First outbreak `F` | 2 |
-| Active outbreak delay `A` | 3 |
-| Respawn delay | 2 |
-| Цели | Salaries where Hours < 40, Overtime Total, Bonus Total |
-| Salaries where Hours < 40 | 218 |
-| Overtime Total | 18 |
-| Bonus Total | 29 |
+- Поле: 8×8.
+- Goals: `SalaryForHoursBelowForty`, `OvertimeTotal`, `BonusTotal`.
+- Dataset: Hours = 36,45,39,48,34; Salary = 67,56,73,61,78; OT = 4,2,6,1,5; Bonus = 5,8,3,7,6.
+- Ответы: low-hours salary = 218; OT total = 18; Bonus total = 29.
+- `B = 14`.
+- `FirstOutbreakTurn = 2`.
+- `ActiveOutbreakDelayTurns = 3`.
+- `RespawnDelayTurns = 2`.
+- Corruption lifetime = 2.
+- Spawn preferred distance = 2 exactly; pool = 2.
+- Formula inventory: `3 SORT + 3 report-SUM`.
 
-Dataset:
+## Геометрия
 
-| Сотрудник | Часы | Зарплата | Переработка | Премия |
-|---|---:|---:|---:|---:|
-| Иванов | 36 | 67 | 4 | 5 |
-| Петров | 45 | 56 | 2 | 8 |
-| Сидоров | 39 | 73 | 6 | 3 |
-| Волкова | 48 | 61 | 1 | 7 |
-| Ким | 34 | 78 | 5 | 6 |
+Field keys: Salary C1, Hours E1, Overtime G1, Bonus B1.
 
-Low-hours salary: `67 + 73 + 78 = 218`.
+SORT: `B2`, `D2`, `F2`. Все три стартовые вертикальные lanes пригодны для первых проекций.
 
-## Стартовое поле
+Report SUM: `H2`, `H3`, `H4`.
 
-|   | A | B | C | D | E | F | G | H |
-|---|---|---|---|---|---|---|---|---|
-| 1 | K:H | · | K:SAL | · | K:OT | K:B | · | REP |
-| 2 | · | S↓ A | · | S↓ B | · | · | · | Σ LowHours |
-| 3 | 36 | · | 67 | · | 4 | 5 | R:Иванов | Σ OT |
-| 4 | 45 | · | 56 | · | 2 | 8 | R:Петров | Σ Bonus |
-| 5 | 39 | · | 73 | · | 6 | 3 | R:Сидоров | · |
-| 6 | 48 | · | 61 | · | 1 | 7 | R:Волкова | · |
-| 7 | 34 | · | 78 | · | 5 | 6 | R:Ким | · |
-| 8 | · | · | · | · | · | · | · | · |
+Данные Hours/Salary/Overtime/Bonus намеренно перемешаны так, чтобы ни Overtime, ни Bonus не лежали готовым чистым диапазоном. Четыре требуемые проекции конкурируют за три SORT-узла.
 
-Formula cells:
-- `B2 = SORT`, down. Используется Hours -> Salary;
-- `D2 = SORT`, down. Используется Overtime -> Bonus;
-- `H2 = SUM`, report LowHours Salary;
-- `H3 = SUM`, report Overtime Total;
-- `H4 = SUM`, report Bonus Total.
+## Базовая no-REF линия
 
-Staging cells для исключённых salary: `F2`, `G2`.
+Один из вариантов:
 
-## Минимальная легальная последовательность
+1. Hours key -> SORT.
+2. Salary key -> SORT.
+3. MOVE salary Петрова (Hours 45) из salary lane в безопасную клетку.
+4. MOVE salary Волковой (Hours 48) из salary lane в безопасную клетку.
+5. DROP оставшийся salary range -> `H2 SUM` = 218.
+6. Overtime key -> третий SORT.
+7. DROP OT range -> `H3 SUM` = 18.
+8. MOVE occupant-key из одного уже ненужного SORT, освобождая формулу.
+9. Bonus key -> освобождённый SORT.
+10. DROP Bonus range -> `H4 SUM` = 29.
 
-### Low-hours Salary
+`C_sem = 9` — четыре SORT, два filter MOVE, три SUM при достаточной инфраструктуре.
 
-1. `K:H -> B2 =SORT()` → `B3:B7 = 36,45,39,48,34`.
-2. `CUT B2` — освободить formula coordinate, запомнив qualifying records: Иванов, Сидоров, Ким.
-3. `K:SAL -> B2 =SORT()` → `B3:B7 = 67,56,73,61,78`.
-4. `CUT B4` (`56`, Петров).
-5. `PASTE F2`.
-6. `CUT B6` (`61`, Волкова).
-7. `PASTE G2`.
-8. `B3:B7 -> H2 =SUM(218)`; пустые B4/B6 игнорируются.
+`C0 ≈ 10` — один дополнительный handling MOVE из-за 3 SORT на 4 проекции.
 
-### Overtime
+`B = 14`, `R ≈ 4`.
 
-9. `K:OT -> D2 =SORT()`.
-10. `D3:D7 -> H3 =SUM(18)`.
+Альтернатива: игрок может отказаться от reuse SORT и вручную перегруппировать Bonus сопоставимым числом MOVE. Это намеренно: scarcity должна создавать выбор, а не обязательную бюрократию.
 
-### Bonus
+## Formula diagnostics
 
-11. `CUT D2` — освободить `=SORT(Overtime)`.
-12. `K:B -> D2 =SORT()`.
-13. `D3:D7 -> H4 =SUM(29)`.
+Для reuse-route:
+- `F_act = 7` (4 SORT + 3 SUM);
+- `F_extract = 1`;
+- `F_delivery = 0` для parking key;
+- `F_tax = 1`;
+- `F_move = 0` в no-REF baseline;
+- `FHL ≈ 1/10 = 0.10`.
 
-`C0 = 13`.
+То есть Formula Handling заметен, но далеко не доминирует.
 
-## Функция balance model
+Approximate no-anomaly `PL`: ориентир `45–55`.
 
-`PL = 100*(0.45*C_n + 0.20*FL + 0.15*SP + 0.10*DI + 0.10*WP)`
+## Anomaly cadence
 
-`AT = 100*(0.30*SN + 0.25*Q + 0.15*AP + 0.15*KS + 0.15*OR)`
+`N_A = 1 + floor((10 - 2)/3) = 3` outbreak opportunities по базовой модели.
 
-`D = 0.55*PL + 0.45*AT`
+Плюс активные очаги распространяются через intent. С `R≈4` игрок способен оплатить несколько defensive MOVE/DELETE, но не может бесконечно чинить доску.
 
-### Puzzle metrics
+Целевой `AT`: примерно `55–70`, уточняется после Unity trace.
 
-| Метрика | Значение | Причина |
-|---|---:|---|
-| `C0` | 13 | semantic chain 8 + OT 2 + SORT reuse + Bonus 2 |
-| `B` | 18 | 5 turns recovery reserve |
-| `R` | 5 | нормальный запас при длинной базе |
-| `F_need` | 6 | 3 SORT + 3 SUM activations |
-| `F_reuse` | 2 | B2 и D2 reuse |
-| `FL` | 0.333 | 2/6 |
-| `SP` | 0 | оба lane чисты на старте; сложность приходит после проекций |
-| `DI` | 0.05 | цели почти независимы; LowHours использует Hours+Salary semantics |
-| `OC` | 2 | Hours before Salary; OT before Bonus only because D2 reused |
-| `WP` | 0.10 | две staging cells для salary exclusions |
+## Каких решений ждём от anomaly
 
-`C_n = min(1, 13/12) = 1`.
+Угрозы должны попадать не только по raw values, но и по **будущим полезным позициям FormulaCell**. Игрок должен выбирать между:
+- использовать SORT сейчас до прихода intent;
+- эвакуировать пустую формулу;
+- вынести occupant, затем формулу двумя действиями;
+- поменять порядок целей;
+- перейти с SORT-reuse на manual range MOVE;
+- карантинить очаг DELETE, если это экономит будущие действия.
 
-`PL ≈ 53.2`.
+Это должно давать несколько потенциальных линий, а не один пароль из правильных кликов.
 
-### Critical lifetime estimate
+## Failure criteria
 
-| Сущность | `U_e` | `T_e` | `S_e` | `O_e` | Recovery `K_e` |
-|---|---:|---:|---:|---:|---:|
-| B2 SORT A | 3 | 4 | +1 | 1 | ∞ |
-| qualifying Hours information | 3 | 4 | +1 | 0 | 2+ |
-| low-hours Salary tokens | 8 | 6 | **-2** | 0 | ∞ |
-| H2 SUM | 8 | 7 | **-1** | 1 | ∞ |
-| D2 SORT B | 12 | 9 | **-3** | 1 | ∞ |
-| Overtime sources | 10 | 8 | **-2** | 0 | ∞ |
-| H3 SUM | 10 | 9 | -1 | 1 | ∞ |
-| Bonus sources | 13 | 10 | **-3** | 0 | ∞ |
-| H4 SUM | 13 | 11 | **-2** | 1 | ∞ |
-| excluded Salary staging F2/G2 | 8 | 8 | 0 | 0 | 1–2 |
+Уровень редизайнится, если playtest показывает любое из следующего:
+- успешная линия стабильно игнорирует anomaly;
+- большинство поражений происходят из-за потери единственной математически незаменимой сущности до возможности реакции;
+- `FHL` фактически >0.25 из-за вынужденного постоянного обслуживания SORT;
+- один и тот же порядок действий побеждает независимо от spawn/intents;
+- 3–4 рестарта получаются только из-за случайного hard-lock, а не обучения маршруту угрозы.
 
-Это deliberately severe layout. Точные `T_e` зависят от actual spawn candidate и route; таблица задаёт гипотезу, которую smoke-test должен опровергнуть/уточнить.
-
-Scalar authoring values:
-- `S_min = -2` (не используем одиночный -3 инфраструктурный worst-case как единственное число, чтобы не переоценивать случайный прямой маршрут);
-- `Q = 0.55`;
-- `OR = 0.20`;
-- `N_A = 1 + floor((13-2)/3) = 4`, поэтому `AP = 1`;
-- `KS = 0.50`;
-- `SN = (2 - (-2))/5 = 0.80`.
-
-`AT ≈ 63.2`.
-
-`D ≈ 57.7`.
-
-## Почему уровень не просто «REF ближе»
-
-Высокая угроза возникает одновременно из:
-- длинного `C0`;
-- нескольких anomaly opportunities (`N_A≈4`);
-- поздно нужных formula coordinates;
-- повторного использования двух SORT-полей;
-- высокой цены потери source set после того, как одна проекция уже была собрана;
-- двух staging values;
-- отрицательного slack у нескольких разных типов critical entity, а не только у ближайшего raw token.
-
-## Ожидаемый тест
-
-- меняет ли игрок порядок трёх целей из-за telegraph;
-- решает ли эвакуировать данные или карантинить REF вместо слепого следования оптимальной цепочке;
-- не становится ли разрушение единственной нужной formula coordinate безальтернативным случайным поражением;
-- достаточно ли `R=5` для 1–2 осмысленных defensive actions;
-- ощущается ли pressure как конфликт планов, а не как «таймер случайно съел нужную кнопку».
+Целевая трудность — не гарантированное число смертей, а ситуация, где знание поля и понимание FormulaCell mobility заметно повышают шанс победы от попытки к попытке.
