@@ -6,7 +6,7 @@ namespace ExcelHell.Narrative
 {
     /// <summary>
     /// Minimal v1 smoke harness. It installs synthetic events and verifies matching,
-    /// once-only behaviour, delayed dispatch, queue order and effect routing without visual UI.
+    /// once-only behaviour, delayed dispatch, queue order and effect routing without requiring final art.
     /// </summary>
     public sealed class NarrativeDebugHarness : MonoBehaviour
     {
@@ -60,7 +60,9 @@ namespace ExcelHell.Narrative
             runner.FireDebug(NarrativeTriggerType.ManualDebug, 1, "smoke.duplicate");
             runner.FireDebug(NarrativeTriggerType.ActionNumber, 3, "smoke.action3");
 
-            var timeout = Time.realtimeSinceStartup + 2f;
+            // The UI branch intentionally lets the real Protagonist presenter receive the first sample effect.
+            // Its authored lifetime is 2 seconds, so the self-test must allow enough headroom to prove queue completion.
+            var timeout = Time.realtimeSinceStartup + 5f;
             while (!runner.IsIdle && Time.realtimeSinceStartup < timeout)
                 yield return null;
 
@@ -163,7 +165,7 @@ namespace ExcelHell.Narrative
             var receiver = root.AddComponent<DebugNarrativeReceiver>();
             root.AddComponent<NarrativeDebugHarness>();
             runner.RegisterReceiver(receiver);
-            Debug.Log("[NARRATIVE] Runtime bootstrap complete. Debug receiver/harness active; visual renderer not attached.");
+            Debug.Log("[NARRATIVE] Runtime bootstrap complete. Debug receiver/harness active; visual renderer may override fallback routing.");
 #else
             Debug.Log("[NARRATIVE] Runtime bootstrap complete. Production mode; debug harness disabled.");
 #endif
