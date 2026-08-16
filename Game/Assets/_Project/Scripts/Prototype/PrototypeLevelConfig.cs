@@ -94,7 +94,6 @@ namespace ExcelHell.Prototype
 
     public static class PrototypeLevelCatalog
     {
-        // Static field initializers run top-to-bottom. Keep shared data above the authored catalog.
         private static readonly string[] Records = { "ivanov", "petrov", "sidorov", "volkova", "kim" };
 
         private static readonly PrototypeLevelConfig[] levels =
@@ -110,59 +109,26 @@ namespace ExcelHell.Prototype
         public static PrototypeLevelConfig Get(int index) => levels[Mathf.Clamp(index, 0, levels.Length - 1)];
 
         /// <summary>
-        /// L1: teach FC2 grammar without #REF!.
-        /// C_sem=4, intended C0=5. D-SORT has two blockers; moving the formula to B2 is the clean route.
+        /// L1: FC2 tutorial without #REF!. New authored layout keeps four formulas but asks for
+        /// SalaryTotal + BonusAtLeastFour so the second report already requires one filtering decision.
+        /// Intended semantic route C0 ~= 5, B=8, recovery reserve 3.
         /// </summary>
         private static PrototypeLevelConfig BuildTutorial()
         {
             return new PrototypeLevelConfig
             {
-                Id = "01_fc2_tutorial",
+                Id = "01_fc2_tutorial_edit",
                 NameRu = "Учебная сверка",
                 NameEn = "Training Reconciliation",
-                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.OvertimeTotal,
+                Rows = 8,
+                Columns = 8,
+                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.BonusAtLeastFour,
                 RefEnabled = false,
                 FormulaCellsEnabled = true,
                 MaxTurns = 8,
-                Dataset = Dataset(
-                    new[] { 41d, 37d, 44d, 36d, 40d },
-                    new[] { 59d, 72d, 64d, 68d, 55d },
-                    new[] { 2d, 5d, 1d, 4d, 3d },
-                    new[] { 4d, 8d, 3d, 6d, 5d }),
-                TokenLayout = TutorialLayout(),
-                FormulaLayout = new[]
-                {
-                    Formula("D2", FormulaKind.Sort),
-                    Formula("F2", FormulaKind.Sort),
-                    Formula("H2", FormulaKind.Sum),
-                    Formula("H3", FormulaKind.Sum)
-                },
-                GoalLayout = new[]
-                {
-                    Goal("H2", PrototypeReportGoals.SalaryTotal),
-                    Goal("H3", PrototypeReportGoals.OvertimeTotal)
-                }
-            };
-        }
-
-        /// <summary>
-        /// L2: exact L1 puzzle under a late, light anomaly.
-        /// C0 remains 5; first outbreak on action 4 gives one visible outbreak window without demanding a response.
-        /// </summary>
-        private static PrototypeLevelConfig BuildLightPressure()
-        {
-            return new PrototypeLevelConfig
-            {
-                Id = "02_fc2_light_pressure",
-                NameRu = "Сверка под наблюдением",
-                NameEn = "Watched Reconciliation",
-                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.OvertimeTotal,
-                RefEnabled = true,
-                FormulaCellsEnabled = true,
-                MaxTurns = 8,
-                FirstOutbreakTurn = 4,
-                RespawnDelayTurns = 6,
-                ActiveOutbreakDelayTurns = 6,
+                FirstOutbreakTurn = 3,
+                RespawnDelayTurns = 2,
+                ActiveOutbreakDelayTurns = 3,
                 CorruptionStepsBeforeDestroy = 2,
                 SpawnPreferredDistance = 2,
                 SpawnDistanceVariation = 1,
@@ -183,27 +149,73 @@ namespace ExcelHell.Prototype
                 GoalLayout = new[]
                 {
                     Goal("H2", PrototypeReportGoals.SalaryTotal),
-                    Goal("H3", PrototypeReportGoals.OvertimeTotal)
+                    Goal("H3", PrototypeReportGoals.BonusAtLeastFour)
                 }
             };
         }
 
         /// <summary>
-        /// L3: semantic dependency + 2-3 expected replan moments.
-        /// No-REF C0~=7 with three SORTs and one report SUM. Initial deterministic spawn candidate is F2.
+        /// L2: formula-scarcity control under one light outbreak window.
+        /// One SORT + one SUM are deliberately reused; B=12 gives ~3 recovery actions above C0 ~= 9.
+        /// Spawn distance 3±1 moves the initial deterministic pressure away from the only SUM.
+        /// </summary>
+        private static PrototypeLevelConfig BuildLightPressure()
+        {
+            return new PrototypeLevelConfig
+            {
+                Id = "02_fc2_light_pressure_edit_edit",
+                NameRu = "Сверка под наблюдением",
+                NameEn = "Watched Reconciliation",
+                Rows = 8,
+                Columns = 8,
+                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.BonusAtLeastFour,
+                RefEnabled = true,
+                FormulaCellsEnabled = true,
+                MaxTurns = 12,
+                FirstOutbreakTurn = 4,
+                RespawnDelayTurns = 6,
+                ActiveOutbreakDelayTurns = 6,
+                CorruptionStepsBeforeDestroy = 2,
+                SpawnPreferredDistance = 3,
+                SpawnDistanceVariation = 1,
+                SpawnCandidatePoolSize = 4,
+                Dataset = Dataset(
+                    new[] { 41d, 37d, 44d, 36d, 40d },
+                    new[] { 59d, 72d, 64d, 68d, 55d },
+                    new[] { 2d, 5d, 1d, 4d, 3d },
+                    new[] { 4d, 8d, 3d, 6d, 5d }),
+                TokenLayout = LightPressureLayout(),
+                FormulaLayout = new[]
+                {
+                    Formula("F1", FormulaKind.Sort),
+                    Formula("G1", FormulaKind.Sum)
+                },
+                GoalLayout = new[]
+                {
+                    Goal("H2", PrototypeReportGoals.SalaryTotal),
+                    Goal("H3", PrototypeReportGoals.BonusAtLeastFour)
+                }
+            };
+        }
+
+        /// <summary>
+        /// L3: semantic dependency and formula reuse under two expected outbreak windows.
+        /// B=13 keeps recovery reserve around three actions for a C0 ~= 10 route.
         /// </summary>
         private static PrototypeLevelConfig BuildReplanTest()
         {
             return new PrototypeLevelConfig
             {
-                Id = "03_fc2_replan",
+                Id = "03_fc2_replan_edit",
                 NameRu = "Несходящиеся данные",
                 NameEn = "Inconsistent Data",
+                Rows = 8,
+                Columns = 8,
                 ReportGoals = PrototypeReportGoals.SalaryOfMaxOvertime | PrototypeReportGoals.SalaryForHoursBelowForty,
                 RefEnabled = true,
                 FormulaCellsEnabled = true,
-                MaxTurns = 11,
-                FirstOutbreakTurn = 2,
+                MaxTurns = 13,
+                FirstOutbreakTurn = 3,
                 RespawnDelayTurns = 3,
                 ActiveOutbreakDelayTurns = 4,
                 CorruptionStepsBeforeDestroy = 2,
@@ -215,12 +227,11 @@ namespace ExcelHell.Prototype
                     new[] { 62d, 69d, 76d, 54d, 71d },
                     new[] { 2d, 4d, 7d, 1d, 5d },
                     new[] { 3d, 7d, 5d, 9d, 4d }),
-                TokenLayout = SemanticScatterLayout(),
+                TokenLayout = ReplanLayout(),
                 FormulaLayout = new[]
                 {
                     Formula("B2", FormulaKind.Sort),
                     Formula("D2", FormulaKind.Sort),
-                    Formula("F2", FormulaKind.Sort),
                     Formula("H5", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
@@ -232,25 +243,28 @@ namespace ExcelHell.Prototype
         }
 
         /// <summary>
-        /// L4: three-goal composition under real #REF! pressure.
-        /// C_sem=9, intended C0~=10. Three SORTs serve four required projections via one purposeful reuse.
+        /// L4: three-goal encounter tuned toward the historical high-interest multi-goal pressure profile.
+        /// Sparse formula inventory is intentional. B=18 gives ~4 model reserve actions above C0 ~= 14,
+        /// while F=3/A=4/Resp=3 targets roughly three outbreak windows instead of five.
         /// </summary>
         private static PrototypeLevelConfig BuildFinalPressure()
         {
             return new PrototypeLevelConfig
             {
-                Id = "04_fc2_final_pressure",
+                Id = "04_fc2_final_pressure_edit",
                 NameRu = "Финальная сверка",
                 NameEn = "Final Reconciliation",
+                Rows = 8,
+                Columns = 8,
                 ReportGoals = PrototypeReportGoals.SalaryForHoursBelowForty |
                               PrototypeReportGoals.OvertimeTotal |
                               PrototypeReportGoals.BonusTotal,
                 RefEnabled = true,
                 FormulaCellsEnabled = true,
-                MaxTurns = 14,
-                FirstOutbreakTurn = 2,
-                RespawnDelayTurns = 2,
-                ActiveOutbreakDelayTurns = 3,
+                MaxTurns = 18,
+                FirstOutbreakTurn = 3,
+                RespawnDelayTurns = 3,
+                ActiveOutbreakDelayTurns = 4,
                 CorruptionStepsBeforeDestroy = 2,
                 SpawnPreferredDistance = 2,
                 SpawnDistanceVariation = 0,
@@ -264,17 +278,15 @@ namespace ExcelHell.Prototype
                 FormulaLayout = new[]
                 {
                     Formula("B2", FormulaKind.Sort),
-                    Formula("D2", FormulaKind.Sort),
                     Formula("F2", FormulaKind.Sort),
-                    Formula("H2", FormulaKind.Sum),
                     Formula("H3", FormulaKind.Sum),
-                    Formula("H4", FormulaKind.Sum)
+                    Formula("D6", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
                 {
                     Goal("H2", PrototypeReportGoals.SalaryForHoursBelowForty),
                     Goal("H3", PrototypeReportGoals.OvertimeTotal),
-                    Goal("H4", PrototypeReportGoals.BonusTotal)
+                    Goal("G6", PrototypeReportGoals.BonusTotal)
                 }
             };
         }
@@ -283,30 +295,110 @@ namespace ExcelHell.Prototype
         {
             return new[]
             {
-                Field("B1", "salary"), Field("D1", "overtime"), Field("F1", "hours"), Field("G1", "bonus"), Label("H1"),
-                Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
-
-                Data("C3", "ivanov", "hours"), Data("E4", "petrov", "hours"), Data("G5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("E8", "kim", "hours"),
-                Data("E3", "ivanov", "salary"), Data("G4", "petrov", "salary"), Data("C5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("G7", "kim", "salary"),
-                Data("G3", "ivanov", "overtime"), Data("C4", "petrov", "overtime"), Data("E5", "sidorov", "overtime"), Data("G6", "volkova", "overtime"), Data("C8", "kim", "overtime"),
-
-                // D3:D7 is deliberately unattractive: two unrelated blockers make moving D2 SORT to the open B-lane cheaper.
-                Data("C7", "ivanov", "bonus"), Data("E7", "petrov", "bonus"), Data("G8", "sidorov", "bonus"), Data("D4", "volkova", "bonus"), Data("D6", "kim", "bonus")
+                Field("B1", "salary"),
+                Field("D1", "overtime"),
+                Field("F1", "hours"),
+                Field("G1", "bonus"),
+                Label("H1"),
+                Record("A3", "ivanov"),
+                Data("C3", "ivanov", "hours"),
+                Data("E3", "ivanov", "salary"),
+                Data("G3", "ivanov", "overtime"),
+                Record("A4", "petrov"),
+                Data("C4", "petrov", "overtime"),
+                Data("D4", "volkova", "bonus"),
+                Data("E4", "petrov", "hours"),
+                Data("G4", "petrov", "salary"),
+                Record("A5", "sidorov"),
+                Data("C5", "sidorov", "salary"),
+                Data("E5", "sidorov", "overtime"),
+                Data("G5", "sidorov", "hours"),
+                Record("A6", "volkova"),
+                Data("C6", "volkova", "hours"),
+                Data("D6", "kim", "bonus"),
+                Data("E6", "volkova", "salary"),
+                Data("G6", "volkova", "overtime"),
+                Record("A7", "kim"),
+                Data("C7", "ivanov", "bonus"),
+                Data("E7", "petrov", "bonus"),
+                Data("G7", "kim", "salary"),
+                Data("C8", "kim", "overtime"),
+                Data("E8", "kim", "hours"),
+                Data("G8", "sidorov", "bonus")
             };
         }
 
-        private static PrototypeTokenPlacement[] SemanticScatterLayout()
+        private static PrototypeTokenPlacement[] LightPressureLayout()
         {
             return new[]
             {
-                Field("C1", "salary"), Field("E1", "hours"), Field("G1", "overtime"), Field("B1", "bonus"), Label("H1"),
-                Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
+                Field("B1", "salary"),
+                Field("C1", "overtime"),
+                Field("D1", "hours"),
+                Field("E1", "bonus"),
+                Label("H1"),
+                Record("A2", "ivanov"),
+                Data("C2", "ivanov", "hours"),
+                Data("E2", "ivanov", "salary"),
+                Data("G2", "ivanov", "overtime"),
+                Record("A3", "petrov"),
+                Data("C3", "petrov", "overtime"),
+                Data("E3", "petrov", "hours"),
+                Data("F3", "volkova", "bonus"),
+                Data("G3", "petrov", "salary"),
+                Record("A4", "sidorov"),
+                Data("C4", "sidorov", "salary"),
+                Data("E4", "sidorov", "overtime"),
+                Data("G4", "sidorov", "hours"),
+                Record("A5", "volkova"),
+                Data("C5", "volkova", "hours"),
+                Data("E5", "volkova", "salary"),
+                Data("F5", "kim", "bonus"),
+                Data("G5", "volkova", "overtime"),
+                Record("A6", "kim"),
+                Data("C6", "ivanov", "bonus"),
+                Data("E6", "petrov", "bonus"),
+                Data("G6", "kim", "salary"),
+                Data("C7", "kim", "overtime"),
+                Data("E7", "kim", "hours"),
+                Data("G7", "sidorov", "bonus")
+            };
+        }
 
-                // B/D/F rows 3..7 start clear. They are useful SORT lanes, but movable FormulaCells can abandon a threatened lane.
-                Data("C3", "ivanov", "hours"), Data("G4", "petrov", "hours"), Data("E5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("G7", "kim", "hours"),
-                Data("E3", "ivanov", "salary"), Data("C4", "petrov", "salary"), Data("G5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("C7", "kim", "salary"),
-                Data("G3", "ivanov", "overtime"), Data("E4", "petrov", "overtime"), Data("C5", "sidorov", "overtime"), Data("G6", "volkova", "overtime"), Data("E7", "kim", "overtime"),
-                Data("C8", "ivanov", "bonus"), Data("D8", "petrov", "bonus"), Data("E8", "sidorov", "bonus"), Data("F8", "volkova", "bonus"), Data("G8", "kim", "bonus")
+        private static PrototypeTokenPlacement[] ReplanLayout()
+        {
+            return new[]
+            {
+                Field("B1", "bonus"),
+                Field("C1", "salary"),
+                Field("E1", "hours"),
+                Field("G1", "overtime"),
+                Label("H1"),
+                Record("A3", "ivanov"),
+                Data("C3", "ivanov", "hours"),
+                Data("E3", "ivanov", "salary"),
+                Data("G3", "ivanov", "overtime"),
+                Record("A4", "petrov"),
+                Data("B4", "petrov", "bonus"),
+                Data("C4", "petrov", "salary"),
+                Data("E4", "petrov", "overtime"),
+                Data("G4", "petrov", "hours"),
+                Record("A5", "sidorov"),
+                Data("C5", "sidorov", "overtime"),
+                Data("E5", "sidorov", "hours"),
+                Data("G5", "sidorov", "salary"),
+                Record("A6", "volkova"),
+                Data("B6", "volkova", "bonus"),
+                Data("C6", "volkova", "hours"),
+                Data("E6", "volkova", "salary"),
+                Data("G6", "volkova", "overtime"),
+                Record("A7", "kim"),
+                Data("C7", "kim", "salary"),
+                Data("E7", "kim", "overtime"),
+                Data("G7", "kim", "hours"),
+                Data("C8", "ivanov", "bonus"),
+                Data("E8", "sidorov", "bonus"),
+                Data("G8", "kim", "bonus")
             };
         }
 
@@ -314,15 +406,36 @@ namespace ExcelHell.Prototype
         {
             return new[]
             {
-                Field("C1", "salary"), Field("E1", "hours"), Field("G1", "overtime"), Field("B1", "bonus"), Label("H1"),
-                Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
-
-                Data("C3", "ivanov", "hours"), Data("G4", "petrov", "hours"), Data("E5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("G7", "kim", "hours"),
-                Data("E3", "ivanov", "salary"), Data("C4", "petrov", "salary"), Data("G5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("C7", "kim", "salary"),
-
-                // Overtime and Bonus deliberately interlock: neither goal starts as a clean direct SUM range.
-                Data("C8", "ivanov", "overtime"), Data("E4", "petrov", "overtime"), Data("C5", "sidorov", "overtime"), Data("G6", "volkova", "overtime"), Data("E7", "kim", "overtime"),
-                Data("G3", "ivanov", "bonus"), Data("D8", "petrov", "bonus"), Data("E8", "sidorov", "bonus"), Data("F8", "volkova", "bonus"), Data("G8", "kim", "bonus")
+                Field("B1", "bonus"),
+                Field("C1", "salary"),
+                Field("E1", "hours"),
+                Field("G1", "overtime"),
+                Label("H1"),
+                Record("A2", "ivanov"),
+                Data("C3", "ivanov", "hours"),
+                Data("E3", "ivanov", "salary"),
+                Data("G3", "ivanov", "bonus"),
+                Record("A4", "petrov"),
+                Data("D4", "petrov", "salary"),
+                Data("E4", "petrov", "overtime"),
+                Data("F4", "petrov", "bonus"),
+                Data("G4", "petrov", "hours"),
+                Record("A5", "sidorov"),
+                Data("C5", "sidorov", "overtime"),
+                Data("E5", "sidorov", "hours"),
+                Data("G5", "sidorov", "salary"),
+                Record("B6", "volkova"),
+                Data("C6", "volkova", "hours"),
+                Data("E6", "volkova", "salary"),
+                Data("F6", "volkova", "bonus"),
+                Data("H6", "volkova", "overtime"),
+                Record("A7", "kim"),
+                Data("C7", "kim", "salary"),
+                Data("E7", "kim", "overtime"),
+                Data("G7", "kim", "hours"),
+                Data("C8", "ivanov", "overtime"),
+                Data("D8", "sidorov", "bonus"),
+                Data("H8", "kim", "bonus")
             };
         }
 
