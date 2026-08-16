@@ -98,11 +98,20 @@ namespace ExcelHell.Prototype
             foreach (var goal in goals)
             {
                 var target = cells[goal.TargetRow, goal.TargetColumn];
-                // Aggregate goals use report SUM cells. Direct-token goals intentionally use a plain ReportCell.
-                if (string.IsNullOrEmpty(goal.ExpectedDirectTokenId) && target.Formula != FormulaKind.Sum)
-                    Debug.LogWarning($"EXEL HELL level {level.Id}: aggregate report target {target.Address} is not authored as SUM formula.");
-                if (!string.IsNullOrEmpty(goal.ExpectedDirectTokenId) && target.Formula != FormulaKind.None)
+
+                // Report goals intentionally support two aggregate workflows:
+                // 1) report SUM cell: compute directly in the report;
+                // 2) plain ReportCell: compute elsewhere, then MOVE the aggregate into the report.
+                // This lets level authors experiment with formula scarcity without fighting the adapter.
+                if (string.IsNullOrEmpty(goal.ExpectedDirectTokenId))
+                {
+                    if (target.Formula == FormulaKind.Sort)
+                        Debug.LogWarning($"EXEL HELL level {level.Id}: aggregate report target {target.Address} cannot use SORT formula; use SUM or a plain delivery ReportCell.");
+                }
+                else if (target.Formula != FormulaKind.None)
+                {
                     Debug.LogWarning($"EXEL HELL level {level.Id}: direct-value report target {target.Address} should be a plain ReportCell.");
+                }
             }
 
             InitializeAnomalyMethod?.Invoke(prototype, null);
