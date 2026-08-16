@@ -81,9 +81,7 @@ namespace ExcelHell.Prototype
             {
                 scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
                 scaler.referenceResolution = new Vector2(ReferenceWidth, ReferenceHeight);
-                scaler.screenMatchMode = CanvasScaler.ScaleMode.ScaleWithScreenSize == scaler.uiScaleMode
-                    ? CanvasScaler.ScreenMatchMode.MatchWidthOrHeight
-                    : scaler.screenMatchMode;
+                scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
 
                 var aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : ReferenceWidth / ReferenceHeight;
                 scaler.matchWidthOrHeight = aspect >= ReferenceWidth / ReferenceHeight ? 1f : 0f;
