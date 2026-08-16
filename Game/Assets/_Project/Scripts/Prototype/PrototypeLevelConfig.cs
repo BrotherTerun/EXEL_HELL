@@ -94,6 +94,10 @@ namespace ExcelHell.Prototype
 
     public static class PrototypeLevelCatalog
     {
+        // Static field initializers run top-to-bottom. StandardScramble uses this array while
+        // the level catalog itself is being constructed, so it must be initialized first.
+        private static readonly string[] Records = { "ivanov", "petrov", "sidorov", "volkova", "kim" };
+
         private static readonly PrototypeLevelConfig[] levels =
         {
             BuildFormulaIntro(),
@@ -363,8 +367,6 @@ namespace ExcelHell.Prototype
             row = oneBasedRow - 1;
             column = oneBasedColumn - 1;
         }
-
-        private static readonly string[] Records = { "ivanov", "petrov", "sidorov", "volkova", "kim" };
     }
 
     public static class PrototypeLevelRuntime
