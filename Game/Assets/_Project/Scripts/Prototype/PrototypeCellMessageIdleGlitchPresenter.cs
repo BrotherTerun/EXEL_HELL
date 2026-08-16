@@ -9,12 +9,17 @@ namespace ExcelHell.Prototype
 {
     /// <summary>
     /// Gives completed CELL MESSAGE manifestations the same living typography language as #REF!.
-    /// The slow typewriter remains readable; only after the text settles does the idle corruption loop begin.
-    /// Presentation only: overlays/hitboxes/gameplay state are never moved or mutated.
+    /// Color semantics are shared with the glitch pass: cyan/blue = digital instability, magenta = intrusion,
+    /// red = terminal danger. The slow typewriter remains readable; corruption begins only after the line settles.
     /// </summary>
     [DefaultExecutionOrder(2100)]
     public sealed class PrototypeCellMessageIdleGlitchPresenter : MonoBehaviour
     {
+        private static readonly Color Cyan = new(0.01f, 0.92f, 0.92f, 1f);
+        private static readonly Color Blue = new(0.09f, 0.07f, 0.75f, 1f);
+        private static readonly Color Magenta = new(0.97f, 0.11f, 0.95f, 1f);
+        private static readonly Color Red = new(0.98f, 0.02f, 0.04f, 1f);
+
         private readonly Dictionary<int, MessageState> states = new();
         private readonly List<int> dead = new();
 
@@ -43,6 +48,7 @@ namespace ExcelHell.Prototype
                 }
 
                 ObserveTypewriter(state);
+                ApplyColorLanguage(state);
                 if (!state.IdleReady) continue;
 
                 if (Time.unscaledTime >= state.NextPulseAt)
@@ -75,6 +81,7 @@ namespace ExcelHell.Prototype
                     Text = text,
                     Rect = rect,
                     BasePosition = rect.anchoredPosition,
+                    BaseColor = text.color,
                     LastObservedText = text.text ?? string.Empty,
                     SettledAt = Time.unscaledTime,
                     Seed = StableHash(root.name + ":" + id),
@@ -95,15 +102,48 @@ namespace ExcelHell.Prototype
                     return;
                 }
 
-                // Typewriter emits one grapheme every 0.200 s. 0.46 s unchanged means the line is complete.
                 if (current.Length > 0 && Time.unscaledTime - state.SettledAt >= 0.46f)
                 {
                     state.BaseText = StripCombining(current);
                     state.IdleReady = true;
                     state.NextPulseAt = Time.unscaledTime + 0.28f;
                 }
+            }
+        }
+
+        private static void ApplyColorLanguage(MessageState state)
+        {
+            if (state?.Text == null) return;
+            var day = CurrentDay();
+            if (day <= 1)
+            {
+                state.Text.color = state.BaseColor;
                 return;
             }
+
+            if (day == 2)
+            {
+                var c = Cyan;
+                c.a = Mathf.Max(0.88f, state.BaseColor.a);
+                state.Text.color = Color.Lerp(state.BaseColor, c, 0.42f);
+                return;
+            }
+
+            var pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * (day >= 4 ? 4.2f : 2.8f) + (state.Seed & 7u));
+            if (day == 3)
+            {
+                var c = Color.Lerp(Blue, Magenta, pulse * 0.72f);
+                c.a = Mathf.Max(0.90f, state.BaseColor.a);
+                state.Text.color = c;
+                return;
+            }
+
+            // L4 is primarily magenta intrusion. Red is a short accent, not the default message color,
+            // preserving red as the terminal/danger signal used by #REF!/destruction.
+            var redAccent = Mathf.Pow(Mathf.Max(0f, Mathf.Sin(Time.unscaledTime * 1.9f + (state.Seed & 3u))), 10f);
+            var l4 = Color.Lerp(Magenta, Red, redAccent * 0.72f);
+            l4.a = Mathf.Max(0.92f, state.BaseColor.a);
+            state.Text.color = l4;
         }
 
         private static void Pulse(MessageState state)
@@ -166,8 +206,6 @@ namespace ExcelHell.Prototype
 
         private static void ApplyJitter(MessageState state)
         {
-            // Keep the message visibly unstable without the old breathing/zoom effect. Only the glyph corruption
-            // and a small positional drift remain; scale and font size stay fixed after typewriter completion.
             var t = Time.unscaledTime * (5.4f + (state.Seed & 3u));
             var strength = CurrentDay() >= 4 ? 2.4f : CurrentDay() == 3 ? 1.8f : 1.25f;
             var x = Mathf.Sin(t * 1.17f) * strength;
@@ -179,7 +217,6 @@ namespace ExcelHell.Prototype
         {
             state.Seed = NextHash(state.Seed);
             var t = (state.Seed & 0xFFFFu) / 65535f;
-            // About 1.5-2.4 visible recompositions per second: enough to pull attention without reading as a pulse.
             return Mathf.Lerp(0.42f, 0.68f, t);
         }
 
@@ -274,6 +311,7 @@ namespace ExcelHell.Prototype
             public Text Text;
             public RectTransform Rect;
             public Vector2 BasePosition;
+            public Color BaseColor;
             public string LastObservedText;
             public string BaseText;
             public float SettledAt;
