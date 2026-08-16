@@ -1,0 +1,5 @@
+level,id,role,C_sem,C0,C0_status,B,R,F_act,F_move,F_extract,F_delivery,F_tax,FHL,ref_enabled,first_F,active_A,respawn,N_A,notes
+L1,01_fc2_tutorial,FC2 tutorial / no REF,4,5,exact baseline,8,3,4,1,0,0,0,0.10,false,,,,0,"Move D2 SORT to B2 is intended spatial choice"
+L2,02_fc2_light_pressure,L1 control + light REF,4,5,exact baseline,8,3,4,1,0,0,0,0.10,true,4,6,6,1,"Same puzzle as L1; one approximate outbreak window"
+L3,03_fc2_replan,semantic dependency / replan,7,7,exact baseline,11,4,4,0,0,0,0,0.00,true,2,4,3,2,"H2 direct-value report; H5 aggregate report; current baseline before constructor redesign"
+L4,04_fc2_final_pressure,three-goal pressure,9,10,approx baseline,14,4,7,0,1,0,1,0.10,true,2,3,2,3,"Three SORTs serve four projections via one purposeful reuse; C0 approximately 10"
