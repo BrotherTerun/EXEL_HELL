@@ -128,6 +128,8 @@ namespace ExcelHell.Narrative
             if (!string.IsNullOrWhiteSpace(definition.levelId) &&
                 !string.Equals(definition.levelId, levelId, StringComparison.OrdinalIgnoreCase)) return false;
             if (definition.trigger == NarrativeTriggerType.ActionNumber && definition.triggerNumber != trigger.Number) return false;
+            if (!string.IsNullOrWhiteSpace(definition.triggerSubjectId) &&
+                !string.Equals(definition.triggerSubjectId, trigger.SubjectId, StringComparison.OrdinalIgnoreCase)) return false;
             return true;
         }
 
