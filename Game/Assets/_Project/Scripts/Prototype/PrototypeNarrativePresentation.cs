@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -20,7 +21,13 @@ namespace ExcelHell.Prototype
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
         private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
         private static readonly FieldInfo ViewsField = typeof(ExcelHellPrototype).GetField("views", Flags);
-        private static readonly char[] CombiningMarks = { '\u0301', '\u0307', '\u0323', '\u0336', '\u035C' };
+
+        private static readonly char[] AboveMarks =
+            { '\u0300', '\u0301', '\u0302', '\u0307', '\u0308', '\u0311', '\u0342', '\u0344' };
+        private static readonly char[] BelowMarks =
+            { '\u0316', '\u0317', '\u0323', '\u0324', '\u0329', '\u0330', '\u0347', '\u0348' };
+        private static readonly char[] OverlayMarks =
+            { '\u0334', '\u0335', '\u0336', '\u0338', '\u035C', '\u0360' };
 
         private ExcelHellPrototype prototype;
         private NarrativeEventRunner runner;
@@ -198,7 +205,7 @@ namespace ExcelHell.Prototype
             var image = overlay.GetComponent<Image>();
             image.color = new Color(accent.r, accent.g, accent.b, 0.13f);
             image.raycastTarget = true;
-            var text = CreateText(overlay.transform, string.Empty, 19, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var text = CreateText(overlay.transform, string.Empty, 20, FontStyle.Bold, TextAnchor.MiddleCenter);
             Stretch(text.rectTransform, 6f);
             text.font = PrototypeVisualTheme.MonoFont;
             text.color = accent;
@@ -214,9 +221,9 @@ namespace ExcelHell.Prototype
                 Debug.Log($"[CELL-MESSAGE] Dismissed event={eventId} cell={address}; gameplay click consumed.");
             });
 
-            var display = CorruptCellMessage(effect.text ?? string.Empty, eventId);
+            var display = CorruptCellMessage(effect.text ?? string.Empty, eventId, out var mode);
             StartCoroutine(TypeCellMessage(text, display));
-            Debug.Log($"[CELL-MESSAGE] Show event={eventId} cell={address} text=\"{effect.text}\" rendered=\"{display}\".");
+            Debug.Log($"[CELL-MESSAGE] Show event={eventId} cell={address} mode={mode} text=\"{effect.text}\" rendered=\"{display}\".");
         }
 
         private CellModel ResolveTarget(string eventId, int requestedRow, int requestedColumn)
@@ -250,50 +257,106 @@ namespace ExcelHell.Prototype
         {
             if (target == null) yield break;
             target.text = string.Empty;
-            for (var i = 1; i <= fullText.Length; i++)
+
+            // Reveal whole grapheme clusters at once so ZALGO combining marks appear together with their base
+            // glyph instead of adding invisible pauses. The cadence is intentionally slow enough to tie the
+            // manifestation to the board event that caused it.
+            var elements = StringInfo.GetTextElementEnumerator(fullText ?? string.Empty);
+            var builder = new StringBuilder(fullText?.Length ?? 0);
+            while (elements.MoveNext())
             {
                 if (target == null) yield break;
-                target.text = fullText.Substring(0, i);
-                // Old 0.045s was easy to miss. 0.112s keeps the manifestation tied to its triggering event.
-                yield return new WaitForSecondsRealtime(0.112f);
+                builder.Append(elements.GetTextElement());
+                target.text = builder.ToString();
+                yield return new WaitForSecondsRealtime(0.200f);
             }
         }
 
-        private string CorruptCellMessage(string source, string eventId)
+        private string CorruptCellMessage(string source, string eventId, out CorruptionMode mode)
         {
+            mode = CorruptionMode.None;
             if (string.IsNullOrEmpty(source)) return source;
+
             var levelId = PrototypeLevelRuntime.Current?.Id ?? string.Empty;
             var day = levelId.StartsWith("04_") ? 4 : levelId.StartsWith("03_") ? 3 : levelId.StartsWith("02_") ? 2 : 1;
             if (day <= 1) return source;
 
-            var chance = day == 2 ? 0.08f : day == 3 ? 0.16f : 0.26f;
-            var maxMarks = day == 4 ? 2 : 1;
-            var state = StableHash($"zalgo:{levelId}:{eventId}:{source}");
-            var builder = new StringBuilder(source.Length * 2);
-
-            foreach (var c in source)
+            var state = StableHash($"corrupt:{levelId}:{eventId}:{source}");
+            mode = (state % 3u) switch
             {
-                builder.Append(c);
-                if (!char.IsLetter(c)) continue;
-                state = NextHash(state);
-                var roll = (state & 0xFFFF) / 65535f;
-                if (roll > chance) continue;
+                0u => CorruptionMode.Zalgo | CorruptionMode.Symbols,
+                1u => CorruptionMode.Zalgo | CorruptionMode.MixedCase,
+                _ => CorruptionMode.Symbols | CorruptionMode.MixedCase
+            };
 
-                var marks = 1;
-                if (maxMarks > 1)
+            var zalgoChance = day == 2 ? 0.46f : day == 3 ? 0.64f : 0.80f;
+            var symbolChance = day == 2 ? 0.20f : day == 3 ? 0.30f : 0.42f;
+            var caseChance = day == 2 ? 0.34f : day == 3 ? 0.48f : 0.62f;
+            var minMarks = day == 2 ? 2 : day == 3 ? 3 : 4;
+            var maxMarks = day == 2 ? 4 : day == 3 ? 6 : 8;
+
+            var builder = new StringBuilder(source.Length * 4);
+            foreach (var original in source)
+            {
+                var rendered = original;
+                if (char.IsLetter(original) && mode.HasFlag(CorruptionMode.MixedCase))
                 {
                     state = NextHash(state);
-                    marks += (int)(state % (uint)maxMarks);
+                    if (Roll(state) <= caseChance)
+                        rendered = char.IsUpper(original) ? char.ToLowerInvariant(original) : char.ToUpperInvariant(original);
                 }
 
-                for (var i = 0; i < marks; i++)
+                if (char.IsLetter(original) && mode.HasFlag(CorruptionMode.Symbols))
                 {
                     state = NextHash(state);
-                    builder.Append(CombiningMarks[(int)(state % (uint)CombiningMarks.Length)]);
+                    if (Roll(state) <= symbolChance && TrySyntaxSubstitute(rendered, out var replacement))
+                        rendered = replacement;
+                }
+
+                builder.Append(rendered);
+
+                if (!char.IsLetter(original) || !mode.HasFlag(CorruptionMode.Zalgo)) continue;
+                state = NextHash(state);
+                if (Roll(state) > zalgoChance) continue;
+
+                state = NextHash(state);
+                var markCount = minMarks + (int)(state % (uint)(maxMarks - minMarks + 1));
+                for (var i = 0; i < markCount; i++)
+                {
+                    state = NextHash(state);
+                    var family = (int)(state % 3u);
+                    var familyMarks = family == 0 ? AboveMarks : family == 1 ? BelowMarks : OverlayMarks;
+                    state = NextHash(state);
+                    builder.Append(familyMarks[(int)(state % (uint)familyMarks.Length)]);
                 }
             }
 
             return builder.ToString();
+        }
+
+        private static bool TrySyntaxSubstitute(char source, out char replacement)
+        {
+            switch (char.ToUpperInvariant(source))
+            {
+                case 'А': replacement = '@'; return true;
+                case 'Б': replacement = '6'; return true;
+                case 'В': replacement = '8'; return true;
+                case 'Г': replacement = '7'; return true;
+                case 'Е': replacement = '3'; return true;
+                case 'Ж': replacement = '*'; return true;
+                case 'З': replacement = '3'; return true;
+                case 'К': replacement = '<'; return true;
+                case 'Н': replacement = '#'; return true;
+                case 'О': replacement = '0'; return true;
+                case 'Р': replacement = '?'; return true;
+                case 'С': replacement = '('; return true;
+                case 'Т': replacement = '+'; return true;
+                case 'Х': replacement = '%'; return true;
+                case 'Ч': replacement = '4'; return true;
+                default:
+                    replacement = source;
+                    return false;
+            }
         }
 
         private Color ManifestationColor(string eventId)
@@ -347,6 +410,8 @@ namespace ExcelHell.Prototype
         {
             if (runner != null) runner.UnregisterReceiver(this);
         }
+
+        private static float Roll(uint value) => (value & 0xFFFFu) / 65535f;
 
         private static uint NextHash(uint value)
         {
@@ -411,6 +476,15 @@ namespace ExcelHell.Prototype
             rect.offsetMin = new Vector2(padding, padding);
             rect.offsetMax = new Vector2(-padding, -padding);
             rect.localScale = Vector3.one;
+        }
+
+        [Flags]
+        private enum CorruptionMode
+        {
+            None = 0,
+            Zalgo = 1,
+            Symbols = 2,
+            MixedCase = 4
         }
     }
 }
