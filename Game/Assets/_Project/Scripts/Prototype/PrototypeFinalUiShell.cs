@@ -82,7 +82,12 @@ namespace ExcelHell.Prototype
                 scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
                 scaler.referenceResolution = new Vector2(ReferenceWidth, ReferenceHeight);
                 scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-                scaler.matchWidthOrHeight = 0.5f;
+
+                // Keep the full 1600x900 safe frame visible. On extra-wide windows, height is the limiting
+                // dimension; on narrower windows, width is. This prevents bottom rows from leaving the viewport.
+                var aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : ReferenceWidth / ReferenceHeight;
+                var referenceAspect = ReferenceWidth / ReferenceHeight;
+                scaler.matchWidthOrHeight = aspect >= referenceAspect ? 1f : 0f;
             }
 
             background = FindRect(canvas.transform, "Background");
