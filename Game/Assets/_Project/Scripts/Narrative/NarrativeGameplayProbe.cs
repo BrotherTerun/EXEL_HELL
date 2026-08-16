@@ -26,6 +26,7 @@ namespace ExcelHell.Narrative
         private Button submitButton;
         private int lastTurn = -1;
         private bool firstRefPublished;
+        private bool allGoalsCompletedPublished;
         private bool levelCompletedPublished;
         private readonly HashSet<string> corruptedCells = new();
         private readonly HashSet<string> destroyedCells = new();
@@ -59,6 +60,7 @@ namespace ExcelHell.Narrative
             goals = null;
             lastTurn = -1;
             firstRefPublished = false;
+            allGoalsCompletedPublished = false;
             levelCompletedPublished = false;
             corruptedCells.Clear();
             destroyedCells.Clear();
@@ -160,6 +162,14 @@ namespace ExcelHell.Narrative
                     subjectId: key,
                     row: goal.TargetRow,
                     column: goal.TargetColumn));
+            }
+
+            if (!allGoalsCompletedPublished && goals.Count > 0 && completedGoals.Count >= goals.Count)
+            {
+                allGoalsCompletedPublished = true;
+                NarrativeSignals.Publish(new NarrativeTrigger(
+                    NarrativeTriggerType.AllGoalsCompleted,
+                    subjectId: PrototypeLevelRuntime.Current?.Id));
             }
         }
 
