@@ -17,6 +17,7 @@ namespace ExcelHell.Prototype
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
         private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
         private static readonly FieldInfo ViewsField = typeof(ExcelHellPrototype).GetField("views", Flags);
+        private static readonly FieldInfo CellLabelField = typeof(ExcelHellCellView).GetField("label", Flags);
 
         private static readonly char[] AboveMarks =
             { '\u0300', '\u0301', '\u0302', '\u0307', '\u0308', '\u0311', '\u0342', '\u0344' };
@@ -56,7 +57,7 @@ namespace ExcelHell.Prototype
                 {
                     var view = views[cell.Row, cell.Column];
                     if (view == null) continue;
-                    var label = view.GetComponentInChildren<Text>(true);
+                    var label = CellLabelField?.GetValue(view) as Text;
                     if (label == null) continue;
 
                     state = CreateState(cell, label);
@@ -67,7 +68,6 @@ namespace ExcelHell.Prototype
                 Apply(state);
             }
 
-            if (active.Count == stillCorrupted.Count) return;
             var removed = new List<string>();
             foreach (var pair in active)
                 if (!stillCorrupted.Contains(pair.Key)) removed.Add(pair.Key);
@@ -93,7 +93,7 @@ namespace ExcelHell.Prototype
         private static RefVisualState CreateState(CellModel cell, Text label)
         {
             // Random per anomaly instance, stable while that red cell is alive.
-            var seed = unchecked((uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue));
+            var seed = unchecked((uint)UnityEngine.Random.Range(1, int.MaxValue));
             var preset = (RefPreset)(seed % 5u);
             var rect = label.rectTransform;
             return new RefVisualState
