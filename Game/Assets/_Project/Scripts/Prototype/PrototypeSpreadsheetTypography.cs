@@ -54,6 +54,20 @@ namespace ExcelHell.Prototype
             var parentName = text.transform.parent != null ? text.transform.parent.name : string.Empty;
             var value = (text.text ?? string.Empty).Trim();
 
+            if (parentName == "Report Goal Caption")
+            {
+                text.fontSize = 11;
+                text.fontStyle = FontStyle.Bold;
+                return;
+            }
+
+            if (parentName.StartsWith("Cell Message"))
+            {
+                text.fontSize = 18;
+                text.fontStyle = FontStyle.Bold;
+                return;
+            }
+
             if (parentName == "Header")
             {
                 text.fontSize = 20;
@@ -61,7 +75,7 @@ namespace ExcelHell.Prototype
                 return;
             }
 
-            if (text.transform.parent != null && text.transform.parent.name == "Formula 2.0 Interaction")
+            if (parentName == "Formula 2.0 Interaction")
             {
                 text.fontSize = 22;
                 text.fontStyle = FontStyle.Bold;
@@ -83,8 +97,6 @@ namespace ExcelHell.Prototype
                 return;
             }
 
-            // Names and field labels need room for Russian localization, but should still be clearly larger
-            // than the prototype's original 14px text.
             text.fontSize = 19;
             text.fontStyle = FontStyle.Bold;
         }
