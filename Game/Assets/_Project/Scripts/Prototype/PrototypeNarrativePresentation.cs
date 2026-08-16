@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using ExcelHell.Narrative;
 using UnityEngine;
 using UnityEngine.UI;
@@ -19,6 +20,7 @@ namespace ExcelHell.Prototype
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
         private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
         private static readonly FieldInfo ViewsField = typeof(ExcelHellPrototype).GetField("views", Flags);
+        private static readonly char[] CombiningMarks = { '\u0301', '\u0307', '\u0323', '\u0336', '\u035C' };
 
         private ExcelHellPrototype prototype;
         private NarrativeEventRunner runner;
@@ -53,8 +55,6 @@ namespace ExcelHell.Prototype
             BindRunner();
             if (prototype != null && !presentationBound) TryBuildPresentation();
 
-            // ProductionHud still owns localization refresh and writes "ЗАДАЧИ" every frame. Apply the final
-            // release semantic afterwards without modifying the stable HUD implementation.
             if (submitLabel != null) submitLabel.text = "ОТПРАВИТЬ ОТЧЁТ";
         }
 
@@ -100,20 +100,15 @@ namespace ExcelHell.Prototype
                 .FirstOrDefault(button => button.gameObject.name == "ui.submit");
             if (legacySubmit == null) return;
 
-            // The former Tasks button becomes the only explicit report action. Widen it just enough to keep
-            // the Russian label readable; Help shifts right, leaving the middle of the topbar for system status.
+            // Layout only. ProductionHud owns the actual submit callback now, so there is no late binding race.
             submitReserved.sizeDelta = new Vector2(190f, submitReserved.sizeDelta.y);
             helpReserved.anchoredPosition = new Vector2(214f, helpReserved.anchoredPosition.y);
-            var button = submitReserved.GetComponent<Button>() ?? submitReserved.gameObject.AddComponent<Button>();
-            button.targetGraphic = submitReserved.GetComponent<Image>();
-            button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(() => legacySubmit.onClick.Invoke());
             submitLabel = submitReserved.GetComponentsInChildren<Text>(true).FirstOrDefault();
 
             BuildSystemStatus(app);
             BuildReportCaptions();
             presentationBound = true;
-            Debug.Log("[NARRATIVE/UI] Report submit, report captions, system status and CellMessage presenter bound.");
+            Debug.Log("[NARRATIVE/UI] Report captions, system status and CellMessage presenter bound.");
         }
 
         private void BuildSystemStatus(RectTransform app)
@@ -169,7 +164,6 @@ namespace ExcelHell.Prototype
             {
                 case NarrativeEffectType.CellMessage:
                     ShowCellMessage(ticket.Request.EventId, effect);
-                    // Manifestations persist independently and must never block the global narrative queue.
                     ticket.Complete();
                     break;
                 case NarrativeEffectType.SystemStatus:
@@ -200,13 +194,14 @@ namespace ExcelHell.Prototype
             Stretch(overlay.GetComponent<RectTransform>());
             overlay.transform.SetAsLastSibling();
 
+            var accent = ManifestationColor(eventId);
             var image = overlay.GetComponent<Image>();
-            image.color = new Color(0.55f, 0.06f, 0.08f, 0.07f);
+            image.color = new Color(accent.r, accent.g, accent.b, 0.13f);
             image.raycastTarget = true;
-            var text = CreateText(overlay.transform, string.Empty, 18, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var text = CreateText(overlay.transform, string.Empty, 19, FontStyle.Bold, TextAnchor.MiddleCenter);
             Stretch(text.rectTransform, 6f);
             text.font = PrototypeVisualTheme.MonoFont;
-            text.color = new Color(0.55f, 0.055f, 0.07f, 1f);
+            text.color = accent;
             text.raycastTarget = false;
 
             var button = overlay.GetComponent<Button>();
@@ -219,8 +214,9 @@ namespace ExcelHell.Prototype
                 Debug.Log($"[CELL-MESSAGE] Dismissed event={eventId} cell={address}; gameplay click consumed.");
             });
 
-            StartCoroutine(TypeCellMessage(text, effect.text ?? string.Empty));
-            Debug.Log($"[CELL-MESSAGE] Show event={eventId} cell={address} text=\"{effect.text}\".");
+            var display = CorruptCellMessage(effect.text ?? string.Empty, eventId);
+            StartCoroutine(TypeCellMessage(text, display));
+            Debug.Log($"[CELL-MESSAGE] Show event={eventId} cell={address} text=\"{effect.text}\" rendered=\"{display}\".");
         }
 
         private CellModel ResolveTarget(string eventId, int requestedRow, int requestedColumn)
@@ -258,8 +254,57 @@ namespace ExcelHell.Prototype
             {
                 if (target == null) yield break;
                 target.text = fullText.Substring(0, i);
-                yield return new WaitForSecondsRealtime(0.045f);
+                // Old 0.045s was easy to miss. 0.112s keeps the manifestation tied to its triggering event.
+                yield return new WaitForSecondsRealtime(0.112f);
             }
+        }
+
+        private string CorruptCellMessage(string source, string eventId)
+        {
+            if (string.IsNullOrEmpty(source)) return source;
+            var levelId = PrototypeLevelRuntime.Current?.Id ?? string.Empty;
+            var day = levelId.StartsWith("04_") ? 4 : levelId.StartsWith("03_") ? 3 : levelId.StartsWith("02_") ? 2 : 1;
+            if (day <= 1) return source;
+
+            var chance = day == 2 ? 0.08f : day == 3 ? 0.16f : 0.26f;
+            var maxMarks = day == 4 ? 2 : 1;
+            var state = StableHash($"zalgo:{levelId}:{eventId}:{source}");
+            var builder = new StringBuilder(source.Length * 2);
+
+            foreach (var c in source)
+            {
+                builder.Append(c);
+                if (!char.IsLetter(c)) continue;
+                state = NextHash(state);
+                var roll = (state & 0xFFFF) / 65535f;
+                if (roll > chance) continue;
+
+                var marks = 1;
+                if (maxMarks > 1)
+                {
+                    state = NextHash(state);
+                    marks += (int)(state % (uint)maxMarks);
+                }
+
+                for (var i = 0; i < marks; i++)
+                {
+                    state = NextHash(state);
+                    builder.Append(CombiningMarks[(int)(state % (uint)CombiningMarks.Length)]);
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private Color ManifestationColor(string eventId)
+        {
+            var levelId = PrototypeLevelRuntime.Current?.Id ?? string.Empty;
+            if (levelId.StartsWith("04_"))
+                return (StableHash(eventId ?? string.Empty) & 1u) == 0u
+                    ? new Color(0.08f, 0.78f, 0.80f, 1f)
+                    : new Color(0.86f, 0.20f, 0.78f, 1f);
+            if (levelId.StartsWith("03_")) return new Color(0.82f, 0.16f, 0.64f, 1f);
+            return new Color(0.86f, 0.08f, 0.11f, 1f);
         }
 
         private void ShowSystemStatus(string message, float duration)
@@ -301,6 +346,17 @@ namespace ExcelHell.Prototype
         private void OnDisable()
         {
             if (runner != null) runner.UnregisterReceiver(this);
+        }
+
+        private static uint NextHash(uint value)
+        {
+            unchecked
+            {
+                value ^= value << 13;
+                value ^= value >> 17;
+                value ^= value << 5;
+                return value;
+            }
         }
 
         private static uint StableHash(string value)
