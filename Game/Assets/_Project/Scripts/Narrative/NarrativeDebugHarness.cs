@@ -1,4 +1,3 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -86,7 +85,7 @@ namespace ExcelHell.Narrative
             else
                 Debug.LogError($"[NARRATIVE/SELF-TEST] FAIL — {summary}.");
 
-            runner.ReplaceEvents(Array.Empty<NarrativeEventDefinition>());
+            runner.ReplaceEvents(System.Array.Empty<NarrativeEventDefinition>());
             Debug.Log("[NARRATIVE/TEST] Synthetic events cleared; real gameplay observation only.");
             running = false;
         }
