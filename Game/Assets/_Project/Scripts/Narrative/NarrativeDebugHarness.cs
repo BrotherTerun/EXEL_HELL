@@ -64,8 +64,9 @@ namespace ExcelHell.Narrative
             runner.FireDebug(NarrativeTriggerType.ManualDebug, 1, "smoke.duplicate");
             runner.FireDebug(NarrativeTriggerType.ActionNumber, 3, "smoke.action3");
 
-            // UI branch routes ProtagonistLine through the real presenter (2s lifetime), so keep headroom.
-            var timeout = Time.realtimeSinceStartup + 5f;
+            // UI branch routes the protagonist sample through the real presenter. Five seconds makes the
+            // bubble deliberately hard to miss while retaining enough test timeout headroom.
+            var timeout = Time.realtimeSinceStartup + 8f;
             while (!runner.IsIdle && Time.realtimeSinceStartup < timeout)
                 yield return null;
 
@@ -109,7 +110,7 @@ namespace ExcelHell.Narrative
                             lifetime = new NarrativeLifetime
                             {
                                 dismissMode = NarrativeDismissMode.TimedOrClick,
-                                duration = 2f
+                                duration = 5f
                             }
                         }
                     }
