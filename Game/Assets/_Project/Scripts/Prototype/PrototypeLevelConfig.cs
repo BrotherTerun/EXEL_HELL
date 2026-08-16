@@ -225,9 +225,7 @@ namespace ExcelHell.Prototype
                 },
                 GoalLayout = new[]
                 {
-                    // Direct report target remains a plain ReportCell.
                     Goal("H2", PrototypeReportGoals.SalaryOfMaxOvertime),
-                    // H3/H4 are ordinary staging cells; H5 is the final aggregate ReportCell + SUM.
                     Goal("H5", PrototypeReportGoals.SalaryForHoursBelowForty)
                 }
             };
@@ -235,7 +233,7 @@ namespace ExcelHell.Prototype
 
         /// <summary>
         /// L4: three-goal composition under real #REF! pressure.
-        /// C_sem=9, intended C0~=10. Three SORTs require one purposeful reuse; three report-SUMs avoid SUM tax.
+        /// C_sem=9, intended C0~=10. Three SORTs serve four required projections via one purposeful reuse.
         /// </summary>
         private static PrototypeLevelConfig BuildFinalPressure()
         {
@@ -262,7 +260,7 @@ namespace ExcelHell.Prototype
                     new[] { 67d, 56d, 73d, 61d, 78d },
                     new[] { 4d, 2d, 6d, 1d, 5d },
                     new[] { 5d, 8d, 3d, 7d, 6d }),
-                TokenLayout = SemanticScatterLayout(),
+                TokenLayout = FinalPressureLayout(),
                 FormulaLayout = new[]
                 {
                     Formula("B2", FormulaKind.Sort),
@@ -304,12 +302,27 @@ namespace ExcelHell.Prototype
                 Field("C1", "salary"), Field("E1", "hours"), Field("G1", "overtime"), Field("B1", "bonus"), Label("H1"),
                 Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
 
-                // B/D/F rows 3..7 start clear. They are three obvious SORT lanes, but FormulaCell mobility means
-                // a threatened lane can still be abandoned/reused rather than being a permanent authored rail.
+                // B/D/F rows 3..7 start clear. They are useful SORT lanes, but movable FormulaCells can abandon a threatened lane.
                 Data("C3", "ivanov", "hours"), Data("G4", "petrov", "hours"), Data("E5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("G7", "kim", "hours"),
                 Data("E3", "ivanov", "salary"), Data("C4", "petrov", "salary"), Data("G5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("C7", "kim", "salary"),
                 Data("G3", "ivanov", "overtime"), Data("E4", "petrov", "overtime"), Data("C5", "sidorov", "overtime"), Data("G6", "volkova", "overtime"), Data("E7", "kim", "overtime"),
                 Data("C8", "ivanov", "bonus"), Data("D8", "petrov", "bonus"), Data("E8", "sidorov", "bonus"), Data("F8", "volkova", "bonus"), Data("G8", "kim", "bonus")
+            };
+        }
+
+        private static PrototypeTokenPlacement[] FinalPressureLayout()
+        {
+            return new[]
+            {
+                Field("C1", "salary"), Field("E1", "hours"), Field("G1", "overtime"), Field("B1", "bonus"), Label("H1"),
+                Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
+
+                Data("C3", "ivanov", "hours"), Data("G4", "petrov", "hours"), Data("E5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("G7", "kim", "hours"),
+                Data("E3", "ivanov", "salary"), Data("C4", "petrov", "salary"), Data("G5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("C7", "kim", "salary"),
+
+                // Overtime and Bonus deliberately interlock: neither goal starts as a clean direct SUM range.
+                Data("C8", "ivanov", "overtime"), Data("E4", "petrov", "overtime"), Data("C5", "sidorov", "overtime"), Data("G6", "volkova", "overtime"), Data("E7", "kim", "overtime"),
+                Data("G3", "ivanov", "bonus"), Data("D8", "petrov", "bonus"), Data("E8", "sidorov", "bonus"), Data("F8", "volkova", "bonus"), Data("G8", "kim", "bonus")
             };
         }
 
