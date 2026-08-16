@@ -6,11 +6,6 @@ using UnityEngine;
 
 namespace ExcelHell.Prototype
 {
-    /// <summary>
-    /// Builds authored playtest layouts after the legacy graybox creates its runtime objects.
-    /// Formula-cell levels replace the generated board completely; legacy levels can still use
-    /// the old dataset-only swap path if needed by another branch.
-    /// </summary>
     [DefaultExecutionOrder(600)]
     public sealed class PrototypeLevelDatasetAdapter : MonoBehaviour
     {
@@ -36,7 +31,6 @@ namespace ExcelHell.Prototype
         {
             var prototype = FindFirstObjectByType<ExcelHellPrototype>();
             if (prototype == null || prototype == appliedTo) return;
-
             Apply(prototype, PrototypeLevelRuntime.Current);
             appliedTo = prototype;
         }
@@ -44,10 +38,8 @@ namespace ExcelHell.Prototype
         private static void Apply(ExcelHellPrototype prototype, PrototypeLevelConfig level)
         {
             if (level?.Dataset == null) return;
-            if (level.FormulaCellsEnabled)
-                ApplyAuthoredFormulaLayout(prototype, level);
-            else
-                ApplyDatasetOnly(prototype, level.Dataset);
+            if (level.FormulaCellsEnabled) ApplyAuthoredFormulaLayout(prototype, level);
+            else ApplyDatasetOnly(prototype, level.Dataset);
         }
 
         private static void ApplyAuthoredFormulaLayout(ExcelHellPrototype prototype, PrototypeLevelConfig level)
@@ -70,17 +62,16 @@ namespace ExcelHell.Prototype
             requiredForPlay.Clear();
             reservedCells.Clear();
 
-            foreach (var goalPlacement in level.GoalLayout ?? Array.Empty<PrototypeReportGoalPlacement>())
+            foreach (var placement in level.GoalLayout ?? Array.Empty<PrototypeReportGoalPlacement>())
             {
-                var goal = BuildGoal(goalPlacement, level.Dataset);
+                var goal = BuildGoal(placement, level.Dataset);
                 goals.Add(goal);
                 reservedCells.Add((goal.TargetRow, goal.TargetColumn));
                 foreach (var sourceId in goal.ExpectedSourceIds) requiredForPlay.Add(sourceId);
                 if (!string.IsNullOrEmpty(goal.ExpectedDirectTokenId)) requiredForPlay.Add(goal.ExpectedDirectTokenId);
             }
 
-            // Semantic lookup data can be critical even when it is not part of the final arithmetic sum.
-            // Mark it before token construction so anomaly spawn/route planning sees the same dependency graph as the player.
+            // Semantic lookup data remain critical even when they are not part of the arithmetic result.
             if ((level.ReportGoals & PrototypeReportGoals.SalaryForHoursBelowForty) != 0)
                 foreach (var record in Records) requiredForPlay.Add(DataId(record, "hours"));
             if ((level.ReportGoals & PrototypeReportGoals.SalaryOfMaxOvertime) != 0)
@@ -107,26 +98,29 @@ namespace ExcelHell.Prototype
             foreach (var goal in goals)
             {
                 var target = cells[goal.TargetRow, goal.TargetColumn];
-                if (target.Formula != FormulaKind.Sum)
-                    Debug.LogWarning($"EXEL HELL level {level.Id}: report target {target.Address} is not authored as SUM formula.");
+                // Aggregate goals use report SUM cells. Direct-token goals intentionally use a plain ReportCell.
+                if (string.IsNullOrEmpty(goal.ExpectedDirectTokenId) && target.Formula != FormulaKind.Sum)
+                    Debug.LogWarning($"EXEL HELL level {level.Id}: aggregate report target {target.Address} is not authored as SUM formula.");
+                if (!string.IsNullOrEmpty(goal.ExpectedDirectTokenId) && target.Formula != FormulaKind.None)
+                    Debug.LogWarning($"EXEL HELL level {level.Id}: direct-value report target {target.Address} should be a plain ReportCell.");
             }
 
-            // Must happen before PrototypeRefSpawnCommitment (execution order 700).
-            // Its committed telegraph is therefore based on the authored board, not the temporary legacy graybox.
             InitializeAnomalyMethod?.Invoke(prototype, null);
             RefreshAllMethod?.Invoke(prototype, null);
         }
 
         private static ReportGoal BuildGoal(PrototypeReportGoalPlacement placement, PrototypeLevelDataset dataset)
         {
-            var expected = Expected(GoalStringId(placement.Goal), dataset);
-            var sources = ExpectedSources(placement.Goal, dataset);
-            var direct = ExpectedDirectToken(placement.Goal, dataset);
-            return new ReportGoal(GoalStringId(placement.Goal), expected, placement.Row, placement.Column, sources, direct);
+            return new ReportGoal(
+                GoalStringId(placement.Goal),
+                Expected(GoalStringId(placement.Goal), dataset),
+                placement.Row,
+                placement.Column,
+                ExpectedSources(placement.Goal, dataset),
+                ExpectedDirectToken(placement.Goal, dataset));
         }
 
-        private static ContentToken BuildToken(PrototypeTokenPlacement placement, PrototypeLevelDataset dataset,
-            HashSet<string> requiredForPlay)
+        private static ContentToken BuildToken(PrototypeTokenPlacement placement, PrototypeLevelDataset dataset, HashSet<string> requiredForPlay)
         {
             switch (placement.Kind)
             {
@@ -159,8 +153,7 @@ namespace ExcelHell.Prototype
             foreach (var cell in cells)
             {
                 var token = cell.Occupant;
-                if (token?.Kind != ContentKind.Data || string.IsNullOrEmpty(token.RecordId) || string.IsNullOrEmpty(token.FieldId))
-                    continue;
+                if (token?.Kind != ContentKind.Data || string.IsNullOrEmpty(token.RecordId) || string.IsNullOrEmpty(token.FieldId)) continue;
                 token.Number = dataset.Value(token.FieldId, RecordIndex(token.RecordId));
             }
 
@@ -176,19 +169,16 @@ namespace ExcelHell.Prototype
             RefreshAllMethod?.Invoke(prototype, null);
         }
 
-        private static string GoalStringId(PrototypeReportGoals goal)
+        private static string GoalStringId(PrototypeReportGoals goal) => goal switch
         {
-            return goal switch
-            {
-                PrototypeReportGoals.SalaryTotal => "goal.salary",
-                PrototypeReportGoals.OvertimeTotal => "goal.overtime",
-                PrototypeReportGoals.BonusTotal => "goal.bonus",
-                PrototypeReportGoals.BonusAtLeastFour => "goal.bonus5",
-                PrototypeReportGoals.SalaryOfMaxOvertime => "goal.maxOvertimeSalary",
-                PrototypeReportGoals.SalaryForHoursBelowForty => "goal.lowHoursSalary",
-                _ => throw new ArgumentOutOfRangeException(nameof(goal), goal, "Goal placement must contain one goal flag.")
-            };
-        }
+            PrototypeReportGoals.SalaryTotal => "goal.salary",
+            PrototypeReportGoals.OvertimeTotal => "goal.overtime",
+            PrototypeReportGoals.BonusTotal => "goal.bonus",
+            PrototypeReportGoals.BonusAtLeastFour => "goal.bonus5",
+            PrototypeReportGoals.SalaryOfMaxOvertime => "goal.maxOvertimeSalary",
+            PrototypeReportGoals.SalaryForHoursBelowForty => "goal.lowHoursSalary",
+            _ => throw new ArgumentOutOfRangeException(nameof(goal), goal, "Goal placement must contain one goal flag.")
+        };
 
         private static IEnumerable<string> ExpectedSources(PrototypeReportGoals goal, PrototypeLevelDataset dataset)
         {
@@ -201,26 +191,18 @@ namespace ExcelHell.Prototype
                 case PrototypeReportGoals.BonusTotal:
                     return Records.Select(record => DataId(record, "bonus"));
                 case PrototypeReportGoals.BonusAtLeastFour:
-                    return Records.Where((record, index) => dataset.Bonus[index] >= 5d)
-                        .Select(record => DataId(record, "bonus"));
+                    return Records.Where((record, index) => dataset.Bonus[index] >= 5d).Select(record => DataId(record, "bonus"));
                 case PrototypeReportGoals.SalaryOfMaxOvertime:
-                {
-                    var index = MaxIndex(dataset.Overtime);
-                    return new[] { DataId(Records[index], "salary") };
-                }
+                    return new[] { DataId(Records[MaxIndex(dataset.Overtime)], "salary") };
                 case PrototypeReportGoals.SalaryForHoursBelowForty:
-                    return Records.Where((record, index) => dataset.Hours[index] < 40d)
-                        .Select(record => DataId(record, "salary"));
+                    return Records.Where((record, index) => dataset.Hours[index] < 40d).Select(record => DataId(record, "salary"));
                 default:
                     return Array.Empty<string>();
             }
         }
 
-        private static string ExpectedDirectToken(PrototypeReportGoals goal, PrototypeLevelDataset dataset)
-        {
-            if (goal != PrototypeReportGoals.SalaryOfMaxOvertime) return null;
-            return DataId(Records[MaxIndex(dataset.Overtime)], "salary");
-        }
+        private static string ExpectedDirectToken(PrototypeReportGoals goal, PrototypeLevelDataset dataset) =>
+            goal == PrototypeReportGoals.SalaryOfMaxOvertime ? DataId(Records[MaxIndex(dataset.Overtime)], "salary") : null;
 
         private static double Expected(string goalStringId, PrototypeLevelDataset dataset)
         {
@@ -245,15 +227,13 @@ namespace ExcelHell.Prototype
         private static int MaxIndex(double[] values)
         {
             var maxIndex = 0;
-            for (var i = 1; i < values.Length; i++)
-                if (values[i] > values[maxIndex]) maxIndex = i;
+            for (var i = 1; i < values.Length; i++) if (values[i] > values[maxIndex]) maxIndex = i;
             return maxIndex;
         }
 
         private static int RecordIndex(string recordId)
         {
-            for (var i = 0; i < Records.Length; i++)
-                if (Records[i] == recordId) return i;
+            for (var i = 0; i < Records.Length; i++) if (Records[i] == recordId) return i;
             throw new ArgumentOutOfRangeException(nameof(recordId), recordId, "Unknown prototype record.");
         }
 
