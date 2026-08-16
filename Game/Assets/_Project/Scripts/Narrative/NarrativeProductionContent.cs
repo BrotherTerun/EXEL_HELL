@@ -28,7 +28,7 @@ namespace ExcelHell.Narrative
             return new List<NarrativeEventDefinition>
             {
                 Event("L1_BOSS_START", level, NarrativeTriggerType.LevelStart,
-                    Boss(StartBossMessage(level, "Доброе утро. Отчёт нужен сегодня."))),
+                    Boss(StartBossMessage(level, "Доброе утро. Отчёт нужен сегодня. Дедлайн — 18:00. Следите за часами."))),
                 Event("L1_DEPT_TEMPLATE", level, NarrativeTriggerType.ActionNumber,
                     Department("У кого-нибудь есть последняя версия шаблона?"), number: 1),
                 Event("L1_DEPT_KETTLE", level, NarrativeTriggerType.ActionNumber,
@@ -36,7 +36,7 @@ namespace ExcelHell.Narrative
                 Event("L1_ALL_GOALS", level, NarrativeTriggerType.AllGoalsCompleted,
                     Boss("Когда закончите сверку, отправьте отчёт.")),
                 Event("L1_HINT_START", level, NarrativeTriggerType.LevelStart,
-                    Protagonist("Сначала сверю, какие показатели нужны в отчёте.", ProtagonistMood.Normal), delay: 1.2f)
+                    Protagonist("Сначала сверю, какие показатели нужны в отчёте. До 18:00.", ProtagonistMood.Normal), delay: 1.2f)
             };
         }
 
@@ -45,7 +45,7 @@ namespace ExcelHell.Narrative
             return new List<NarrativeEventDefinition>
             {
                 Event("L2_BOSS_START", level, NarrativeTriggerType.LevelStart,
-                    Boss(StartBossMessage(level, "Как продвигается отчёт?"))),
+                    Boss(StartBossMessage(level, "Как продвигается отчёт? Дедлайн сегодня в 18:00."))),
                 Event("L2_DEPT_MOROZOV", level, NarrativeTriggerType.ActionNumber,
                     Department("А Морозов сегодня будет?"), number: 1),
                 Event("L2_DEPT_WROTE", level, NarrativeTriggerType.ActionNumber,
@@ -213,8 +213,7 @@ namespace ExcelHell.Narrative
         {
             var goals = level.GoalLayout ?? Array.Empty<PrototypeReportGoalPlacement>();
             if (goals.Length == 0) return opening;
-            var lines = goals.Select(goal =>
-                $"— {Address(goal.Row, goal.Column)}: {GoalLabel(goal.Goal)}");
+            var lines = goals.Select(goal => $"— {Address(goal.Row, goal.Column)}: {GoalLabel(goal.Goal)}");
             return $"{opening}\nНа сегодня заполните:\n{string.Join("\n", lines)}";
         }
 
@@ -240,8 +239,7 @@ namespace ExcelHell.Narrative
             _ => "ОТЧЁТ"
         };
 
-        private static string Address(int row, int column) =>
-            $"{ExcelHellPrototype.ColumnName(column)}{row + 1}";
+        private static string Address(int row, int column) => $"{ExcelHellPrototype.ColumnName(column)}{row + 1}";
     }
 
     [DefaultExecutionOrder(1180)]
