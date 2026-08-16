@@ -7,8 +7,8 @@ using UnityEngine.UI;
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Art-agnostic protagonist presentation endpoint. Uses the reserved avatar slot and a temporary speech bubble;
-    /// the pixel-art pass can replace visuals without changing NarrativeLayer contracts.
+    /// Art-agnostic protagonist presentation endpoint. The reserved lower-right office slot will later receive
+    /// the real pixel character; this component already owns mood and speech lifetime semantics.
     /// </summary>
     [DefaultExecutionOrder(1950)]
     public sealed class PrototypeProtagonistPresenter : MonoBehaviour, INarrativeEffectReceiver
@@ -44,7 +44,7 @@ namespace ExcelHell.Prototype
 
         private void Bind(ExcelHellPrototype owner)
         {
-            CompleteActive();
+            CompleteActive("rebind");
             prototype = owner;
             canvas = null;
             avatarSlot = null;
@@ -73,16 +73,16 @@ namespace ExcelHell.Prototype
             avatarState = avatarSlot.GetComponentsInChildren<Text>(true).FirstOrDefault();
             if (avatarState != null)
             {
-                avatarState.text = "NORMAL";
+                avatarState.text = "NORMAL\n[PROTAGONIST]";
                 avatarState.fontSize = 13;
             }
 
             bubble = new GameObject("Protagonist Line", typeof(RectTransform), typeof(Image), typeof(Button));
             bubble.transform.SetParent(canvas.transform, false);
-            SetTopLeft(bubble.GetComponent<RectTransform>(), 596f, -70f, 392f, 92f);
+            SetTopLeft(bubble.GetComponent<RectTransform>(), 1050f, -390f, 510f, 110f);
 
             var image = bubble.GetComponent<Image>();
-            image.color = new Color(0.075f, 0.085f, 0.105f, 0.98f);
+            image.color = new Color(0.075f, 0.085f, 0.105f, 0.985f);
             image.raycastTarget = true;
 
             bubbleButton = bubble.GetComponent<Button>();
@@ -100,13 +100,13 @@ namespace ExcelHell.Prototype
 
         public void Receive(NarrativeEffectTicket ticket)
         {
-            if (ticket == null)
-                return;
+            if (ticket == null) return;
 
-            CompleteActive();
+            CompleteActive("replaced");
             if (bubble == null) TryBuild();
             if (bubble == null || bubbleText == null)
             {
+                Debug.LogWarning($"[PROTAGONIST/UI] Presenter unavailable for event={ticket.Request.EventId}; completing without rendering.");
                 ticket.Complete();
                 return;
             }
@@ -116,6 +116,10 @@ namespace ExcelHell.Prototype
             bubbleText.text = effect.text ?? string.Empty;
             SetMood(effect.mood);
             bubble.SetActive(true);
+            bubble.transform.SetAsLastSibling();
+
+            Debug.Log($"[PROTAGONIST/UI] Show event={ticket.Request.EventId} mood={effect.mood} " +
+                      $"dismiss={effect.lifetime.dismissMode} duration={effect.lifetime.duration:0.##} text=\"{effect.text}\"");
 
             if (effect.lifetime.dismissMode == NarrativeDismissMode.Timed ||
                 effect.lifetime.dismissMode == NarrativeDismissMode.TimedOrClick)
@@ -129,10 +133,10 @@ namespace ExcelHell.Prototype
             if (avatarState == null) return;
             avatarState.text = mood switch
             {
-                ProtagonistMood.Tired => "TIRED",
-                ProtagonistMood.Alarmed => "ALARMED",
-                ProtagonistMood.Psychotic => "PSYCHOTIC",
-                _ => "NORMAL"
+                ProtagonistMood.Tired => "TIRED\n[PROTAGONIST]",
+                ProtagonistMood.Alarmed => "ALARMED\n[PROTAGONIST]",
+                ProtagonistMood.Psychotic => "PSYCHOTIC\n[PROTAGONIST]",
+                _ => "NORMAL\n[PROTAGONIST]"
             };
         }
 
@@ -141,16 +145,16 @@ namespace ExcelHell.Prototype
             if (activeTicket == null) return;
             var mode = activeTicket.Request.Effect.lifetime.dismissMode;
             if (mode == NarrativeDismissMode.OnClick || mode == NarrativeDismissMode.TimedOrClick)
-                CompleteActive();
+                CompleteActive("click");
         }
 
         private IEnumerator DismissAfter(float seconds)
         {
             yield return new WaitForSecondsRealtime(seconds);
-            CompleteActive();
+            CompleteActive("timeout");
         }
 
-        private void CompleteActive()
+        private void CompleteActive(string reason)
         {
             if (timeoutRoutine != null)
             {
@@ -161,8 +165,10 @@ namespace ExcelHell.Prototype
             if (bubble != null) bubble.SetActive(false);
             if (activeTicket != null)
             {
+                var eventId = activeTicket.Request.EventId;
                 activeTicket.Complete();
                 activeTicket = null;
+                Debug.Log($"[PROTAGONIST/UI] Hide event={eventId} reason={reason}.");
             }
         }
 
@@ -176,7 +182,7 @@ namespace ExcelHell.Prototype
 
         private void OnDisable()
         {
-            CompleteActive();
+            CompleteActive("disabled");
             if (runner != null) runner.UnregisterReceiver(this);
         }
 
