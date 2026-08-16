@@ -43,6 +43,7 @@ namespace ExcelHell.Narrative
         private readonly Queue<NarrativeEffectRequest> queue = new();
         private readonly List<INarrativeEffectReceiver> receivers = new();
         private bool draining;
+        private int pendingDispatches;
 
         public string LevelId
         {
@@ -56,7 +57,8 @@ namespace ExcelHell.Narrative
         public int DispatchedEffectCount { get; private set; }
         public int OnceSkipCount { get; private set; }
         public int MissingReceiverCount { get; private set; }
-        public bool IsIdle => !draining && queue.Count == 0;
+        public int PendingDispatchCount => pendingDispatches;
+        public bool IsIdle => pendingDispatches == 0 && !draining && queue.Count == 0;
 
         private void OnEnable()
         {
@@ -68,6 +70,7 @@ namespace ExcelHell.Narrative
         {
             NarrativeSignals.Triggered -= OnTrigger;
             StopAllCoroutines();
+            pendingDispatches = 0;
             draining = false;
             queue.Clear();
         }
@@ -133,6 +136,8 @@ namespace ExcelHell.Narrative
                 if (definition.once && !string.IsNullOrWhiteSpace(definition.id)) consumed.Add(definition.id);
                 if (verboseLogging)
                     Debug.Log($"[NARRATIVE/MATCH] {definition.id ?? "<unnamed>"} <- {trigger.Type}");
+
+                pendingDispatches++;
                 StartCoroutine(DispatchEvent(definition));
             }
         }
@@ -150,15 +155,22 @@ namespace ExcelHell.Narrative
 
         private IEnumerator DispatchEvent(NarrativeEventDefinition definition)
         {
-            if (definition.delay > 0f) yield return new WaitForSeconds(definition.delay);
-
-            foreach (var effect in definition.effects)
+            try
             {
-                if (effect == null) continue;
-                queue.Enqueue(new NarrativeEffectRequest(definition.id, effect));
-            }
+                if (definition.delay > 0f) yield return new WaitForSeconds(definition.delay);
 
-            if (!draining) StartCoroutine(DrainQueue());
+                foreach (var effect in definition.effects)
+                {
+                    if (effect == null) continue;
+                    queue.Enqueue(new NarrativeEffectRequest(definition.id, effect));
+                }
+
+                if (!draining) StartCoroutine(DrainQueue());
+            }
+            finally
+            {
+                pendingDispatches = Mathf.Max(0, pendingDispatches - 1);
+            }
         }
 
         private IEnumerator DrainQueue()
