@@ -94,30 +94,32 @@ namespace ExcelHell.Prototype
 
     public static class PrototypeLevelCatalog
     {
-        // Static field initializers run top-to-bottom. StandardScramble uses this array while
-        // the level catalog itself is being constructed, so it must be initialized first.
+        // Static field initializers run top-to-bottom. Keep shared data above the authored catalog.
         private static readonly string[] Records = { "ivanov", "petrov", "sidorov", "volkova", "kim" };
 
         private static readonly PrototypeLevelConfig[] levels =
         {
-            BuildFormulaIntro(),
-            BuildRoutineReport(),
-            BuildUrgentReconciliation(),
-            BuildInconsistentData(),
-            BuildFinalReconciliation()
+            BuildTutorial(),
+            BuildLightPressure(),
+            BuildReplanTest(),
+            BuildFinalPressure()
         };
 
         public static IReadOnlyList<PrototypeLevelConfig> Levels => levels;
         public static int Count => levels.Length;
         public static PrototypeLevelConfig Get(int index) => levels[Mathf.Clamp(index, 0, levels.Length - 1)];
 
-        private static PrototypeLevelConfig BuildFormulaIntro()
+        /// <summary>
+        /// L1: teach FC2 grammar without #REF!.
+        /// C_sem=4, intended C0=5. D-SORT has two blockers; moving the formula to B2 is the clean route.
+        /// </summary>
+        private static PrototypeLevelConfig BuildTutorial()
         {
             return new PrototypeLevelConfig
             {
-                Id = "01_formula_intro",
-                NameRu = "Формульная сверка",
-                NameEn = "Formula Reconciliation",
+                Id = "01_fc2_tutorial",
+                NameRu = "Учебная сверка",
+                NameEn = "Training Reconciliation",
                 ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.OvertimeTotal,
                 RefEnabled = false,
                 FormulaCellsEnabled = true,
@@ -127,16 +129,13 @@ namespace ExcelHell.Prototype
                     new[] { 59d, 72d, 64d, 68d, 55d },
                     new[] { 2d, 5d, 1d, 4d, 3d },
                     new[] { 4d, 8d, 3d, 6d, 5d }),
-                TokenLayout = StandardScramble(
-                    salaryField: "B1", hoursField: "C1", overtimeField: "E1", bonusField: "G1",
-                    hours: new[] { "B3", "G4", "C5", "E6", "B8" },
-                    salary: new[] { "G3", "C4", "E5", "B6", "G7" },
-                    overtime: new[] { "E3", "B4", "G5", "C6", "E7" },
-                    bonus: new[] { "C3", "E4", "B5", "G6", "C7" }),
+                TokenLayout = TutorialLayout(),
                 FormulaLayout = new[]
                 {
-                    Formula("D2", FormulaKind.Sort), Formula("F2", FormulaKind.Sort),
-                    Formula("H2", FormulaKind.Sum), Formula("H3", FormulaKind.Sum)
+                    Formula("D2", FormulaKind.Sort),
+                    Formula("F2", FormulaKind.Sort),
+                    Formula("H2", FormulaKind.Sum),
+                    Formula("H3", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
                 {
@@ -146,123 +145,103 @@ namespace ExcelHell.Prototype
             };
         }
 
-        private static PrototypeLevelConfig BuildRoutineReport()
+        /// <summary>
+        /// L2: exact L1 puzzle under a late, light anomaly.
+        /// C0 remains 5; first outbreak on action 4 gives one visible outbreak window without demanding a response.
+        /// </summary>
+        private static PrototypeLevelConfig BuildLightPressure()
         {
             return new PrototypeLevelConfig
             {
-                Id = "02_routine_report",
-                NameRu = "Обычный отчёт",
-                NameEn = "Routine Report",
-                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.BonusAtLeastFour,
-                RefEnabled = false,
+                Id = "02_fc2_light_pressure",
+                NameRu = "Сверка под наблюдением",
+                NameEn = "Watched Reconciliation",
+                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.OvertimeTotal,
+                RefEnabled = true,
                 FormulaCellsEnabled = true,
-                MaxTurns = 10,
+                MaxTurns = 8,
+                FirstOutbreakTurn = 4,
+                RespawnDelayTurns = 6,
+                ActiveOutbreakDelayTurns = 6,
+                CorruptionStepsBeforeDestroy = 2,
+                SpawnPreferredDistance = 2,
+                SpawnDistanceVariation = 1,
+                SpawnCandidatePoolSize = 4,
                 Dataset = Dataset(
                     new[] { 41d, 37d, 44d, 36d, 40d },
                     new[] { 59d, 72d, 64d, 68d, 55d },
                     new[] { 2d, 5d, 1d, 4d, 3d },
                     new[] { 4d, 8d, 3d, 6d, 5d }),
-                TokenLayout = StandardScramble(
-                    salaryField: "B1", hoursField: "C1", overtimeField: "E1", bonusField: "G1",
-                    hours: new[] { "B3", "G4", "C5", "E6", "B8" },
-                    salary: new[] { "G3", "C4", "E5", "B6", "G7" },
-                    overtime: new[] { "E3", "B4", "G5", "C6", "E7" },
-                    bonus: new[] { "C3", "E4", "B5", "G6", "C7" }),
+                TokenLayout = TutorialLayout(),
                 FormulaLayout = new[]
                 {
-                    Formula("D2", FormulaKind.Sort), Formula("F2", FormulaKind.Sort),
-                    Formula("H2", FormulaKind.Sum), Formula("H3", FormulaKind.Sum)
+                    Formula("D2", FormulaKind.Sort),
+                    Formula("F2", FormulaKind.Sort),
+                    Formula("H2", FormulaKind.Sum),
+                    Formula("H3", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
                 {
                     Goal("H2", PrototypeReportGoals.SalaryTotal),
-                    Goal("H3", PrototypeReportGoals.BonusAtLeastFour)
+                    Goal("H3", PrototypeReportGoals.OvertimeTotal)
                 }
             };
         }
 
-        private static PrototypeLevelConfig BuildUrgentReconciliation()
+        /// <summary>
+        /// L3: semantic dependency + 2-3 expected replan moments.
+        /// No-REF C0~=7 with three SORTs and one report SUM. Initial deterministic spawn candidate is F2.
+        /// </summary>
+        private static PrototypeLevelConfig BuildReplanTest()
         {
             return new PrototypeLevelConfig
             {
-                Id = "03_urgent_reconciliation",
-                NameRu = "Срочная сверка",
-                NameEn = "Urgent Reconciliation",
-                ReportGoals = PrototypeReportGoals.SalaryTotal | PrototypeReportGoals.BonusAtLeastFour,
-                RefEnabled = true,
-                FormulaCellsEnabled = true,
-                MaxTurns = 13,
-                FirstOutbreakTurn = 4,
-                RespawnDelayTurns = 3,
-                ActiveOutbreakDelayTurns = 4,
-                Dataset = Dataset(
-                    new[] { 39d, 46d, 34d, 42d, 37d },
-                    new[] { 61d, 57d, 74d, 66d, 52d },
-                    new[] { 3d, 1d, 6d, 2d, 4d },
-                    new[] { 6d, 4d, 8d, 7d, 2d }),
-                TokenLayout = StandardScramble(
-                    salaryField: "C1", hoursField: "E1", overtimeField: "G1", bonusField: "B1",
-                    hours: new[] { "C3", "E4", "G5", "C6", "E8" },
-                    salary: new[] { "E3", "G4", "C5", "E6", "G7" },
-                    overtime: new[] { "G3", "C4", "E5", "G6", "C8" },
-                    bonus: new[] { "B3", "B4", "B5", "B6", "B7" }),
-                FormulaLayout = new[]
-                {
-                    Formula("D2", FormulaKind.Sort), Formula("F2", FormulaKind.Sort), Formula("B2", FormulaKind.Sort),
-                    Formula("H2", FormulaKind.Sum), Formula("H3", FormulaKind.Sum)
-                },
-                GoalLayout = new[]
-                {
-                    Goal("H2", PrototypeReportGoals.SalaryTotal),
-                    Goal("H3", PrototypeReportGoals.BonusAtLeastFour)
-                }
-            };
-        }
-
-        private static PrototypeLevelConfig BuildInconsistentData()
-        {
-            return new PrototypeLevelConfig
-            {
-                Id = "04_inconsistent_data",
+                Id = "03_fc2_replan",
                 NameRu = "Несходящиеся данные",
                 NameEn = "Inconsistent Data",
                 ReportGoals = PrototypeReportGoals.SalaryOfMaxOvertime | PrototypeReportGoals.SalaryForHoursBelowForty,
                 RefEnabled = true,
                 FormulaCellsEnabled = true,
-                MaxTurns = 18,
-                FirstOutbreakTurn = 4,
+                MaxTurns = 11,
+                FirstOutbreakTurn = 2,
                 RespawnDelayTurns = 3,
                 ActiveOutbreakDelayTurns = 4,
+                CorruptionStepsBeforeDestroy = 2,
+                SpawnPreferredDistance = 2,
+                SpawnDistanceVariation = 1,
+                SpawnCandidatePoolSize = 4,
                 Dataset = Dataset(
                     new[] { 38d, 43d, 35d, 46d, 37d },
                     new[] { 62d, 69d, 76d, 54d, 71d },
                     new[] { 2d, 4d, 7d, 1d, 5d },
                     new[] { 3d, 7d, 5d, 9d, 4d }),
-                TokenLayout = StandardScramble(
-                    salaryField: "B1", hoursField: "D1", overtimeField: "F1", bonusField: "G1",
-                    hours: new[] { "C3", "G4", "E5", "C6", "G7" },
-                    salary: new[] { "E3", "C4", "G5", "E6", "C7" },
-                    overtime: new[] { "G3", "E4", "C5", "G6", "E7" },
-                    bonus: new[] { "C8", "D8", "E8", "F8", "G8" }),
+                TokenLayout = SemanticScatterLayout(),
                 FormulaLayout = new[]
                 {
-                    Formula("B2", FormulaKind.Sort), Formula("D2", FormulaKind.Sort), Formula("F2", FormulaKind.Sort),
+                    Formula("B2", FormulaKind.Sort),
+                    Formula("D2", FormulaKind.Sort),
+                    Formula("F2", FormulaKind.Sort),
                     Formula("H5", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
                 {
-                    // Direct-value report target: protected ReportCell, intentionally not a formula.
+                    // Direct report target remains a plain ReportCell.
                     Goal("H2", PrototypeReportGoals.SalaryOfMaxOvertime),
+                    // H3/H4 are ordinary staging cells; H5 is the final aggregate ReportCell + SUM.
                     Goal("H5", PrototypeReportGoals.SalaryForHoursBelowForty)
                 }
             };
         }
 
-        private static PrototypeLevelConfig BuildFinalReconciliation()
+        /// <summary>
+        /// L4: three-goal composition under real #REF! pressure.
+        /// C_sem=9, intended C0~=10. Three SORTs require one purposeful reuse; three report-SUMs avoid SUM tax.
+        /// </summary>
+        private static PrototypeLevelConfig BuildFinalPressure()
         {
             return new PrototypeLevelConfig
             {
-                Id = "05_final_reconciliation",
+                Id = "04_fc2_final_pressure",
                 NameRu = "Финальная сверка",
                 NameEn = "Final Reconciliation",
                 ReportGoals = PrototypeReportGoals.SalaryForHoursBelowForty |
@@ -270,32 +249,28 @@ namespace ExcelHell.Prototype
                               PrototypeReportGoals.BonusTotal,
                 RefEnabled = true,
                 FormulaCellsEnabled = true,
-                MaxTurns = 16,
-                FirstOutbreakTurn = 4,
-                RespawnDelayTurns = 3,
-                ActiveOutbreakDelayTurns = 4,
+                MaxTurns = 14,
+                FirstOutbreakTurn = 2,
+                RespawnDelayTurns = 2,
+                ActiveOutbreakDelayTurns = 3,
+                CorruptionStepsBeforeDestroy = 2,
+                SpawnPreferredDistance = 2,
+                SpawnDistanceVariation = 0,
+                SpawnCandidatePoolSize = 2,
                 Dataset = Dataset(
                     new[] { 36d, 45d, 39d, 48d, 34d },
                     new[] { 67d, 56d, 73d, 61d, 78d },
                     new[] { 4d, 2d, 6d, 1d, 5d },
                     new[] { 5d, 8d, 3d, 7d, 6d }),
-                TokenLayout = new[]
-                {
-                    Field("B1", "hours"), Field("D1", "salary"), Field("F1", "overtime"), Field("G1", "bonus"), Label("H1"),
-                    Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
-
-                    // Hours occupy the spare C-lane at start. Sorting Hours into B frees C as a general backup SORT lane.
-                    Data("C3", "ivanov", "hours"), Data("C4", "petrov", "hours"), Data("C5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("C7", "kim", "hours"),
-                    Data("E3", "ivanov", "salary"), Data("E4", "petrov", "salary"), Data("E5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("E7", "kim", "salary"),
-                    Data("B8", "ivanov", "overtime"), Data("C8", "petrov", "overtime"), Data("D8", "sidorov", "overtime"), Data("E8", "volkova", "overtime"), Data("F8", "kim", "overtime"),
-                    // Bonus is already contiguous: one goal can be completed without consuming another SORT lane.
-                    Data("G3", "ivanov", "bonus"), Data("G4", "petrov", "bonus"), Data("G5", "sidorov", "bonus"), Data("G6", "volkova", "bonus"), Data("G7", "kim", "bonus")
-                },
+                TokenLayout = SemanticScatterLayout(),
                 FormulaLayout = new[]
                 {
-                    Formula("B2", FormulaKind.Sort), Formula("C2", FormulaKind.Sort),
-                    Formula("D2", FormulaKind.Sort), Formula("F2", FormulaKind.Sort),
-                    Formula("H2", FormulaKind.Sum), Formula("H3", FormulaKind.Sum), Formula("H4", FormulaKind.Sum)
+                    Formula("B2", FormulaKind.Sort),
+                    Formula("D2", FormulaKind.Sort),
+                    Formula("F2", FormulaKind.Sort),
+                    Formula("H2", FormulaKind.Sum),
+                    Formula("H3", FormulaKind.Sum),
+                    Formula("H4", FormulaKind.Sum)
                 },
                 GoalLayout = new[]
                 {
@@ -306,32 +281,52 @@ namespace ExcelHell.Prototype
             };
         }
 
+        private static PrototypeTokenPlacement[] TutorialLayout()
+        {
+            return new[]
+            {
+                Field("B1", "salary"), Field("D1", "overtime"), Field("F1", "hours"), Field("G1", "bonus"), Label("H1"),
+                Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
+
+                Data("C3", "ivanov", "hours"), Data("E4", "petrov", "hours"), Data("G5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("E8", "kim", "hours"),
+                Data("E3", "ivanov", "salary"), Data("G4", "petrov", "salary"), Data("C5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("G7", "kim", "salary"),
+                Data("G3", "ivanov", "overtime"), Data("C4", "petrov", "overtime"), Data("E5", "sidorov", "overtime"), Data("G6", "volkova", "overtime"), Data("C8", "kim", "overtime"),
+
+                // D3:D7 is deliberately unattractive: two unrelated blockers make moving D2 SORT to the open B-lane cheaper.
+                Data("C7", "ivanov", "bonus"), Data("E7", "petrov", "bonus"), Data("G8", "sidorov", "bonus"), Data("D4", "volkova", "bonus"), Data("D6", "kim", "bonus")
+            };
+        }
+
+        private static PrototypeTokenPlacement[] SemanticScatterLayout()
+        {
+            return new[]
+            {
+                Field("C1", "salary"), Field("E1", "hours"), Field("G1", "overtime"), Field("B1", "bonus"), Label("H1"),
+                Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim"),
+
+                // B/D/F rows 3..7 start clear. They are three obvious SORT lanes, but FormulaCell mobility means
+                // a threatened lane can still be abandoned/reused rather than being a permanent authored rail.
+                Data("C3", "ivanov", "hours"), Data("G4", "petrov", "hours"), Data("E5", "sidorov", "hours"), Data("C6", "volkova", "hours"), Data("G7", "kim", "hours"),
+                Data("E3", "ivanov", "salary"), Data("C4", "petrov", "salary"), Data("G5", "sidorov", "salary"), Data("E6", "volkova", "salary"), Data("C7", "kim", "salary"),
+                Data("G3", "ivanov", "overtime"), Data("E4", "petrov", "overtime"), Data("C5", "sidorov", "overtime"), Data("G6", "volkova", "overtime"), Data("E7", "kim", "overtime"),
+                Data("C8", "ivanov", "bonus"), Data("D8", "petrov", "bonus"), Data("E8", "sidorov", "bonus"), Data("F8", "volkova", "bonus"), Data("G8", "kim", "bonus")
+            };
+        }
+
         private static PrototypeLevelDataset Dataset(double[] hours, double[] salary, double[] overtime, double[] bonus) =>
             new() { Hours = hours, Salary = salary, Overtime = overtime, Bonus = bonus };
 
-        private static PrototypeTokenPlacement[] StandardScramble(
-            string salaryField, string hoursField, string overtimeField, string bonusField,
-            string[] hours, string[] salary, string[] overtime, string[] bonus)
-        {
-            var list = new List<PrototypeTokenPlacement>
-            {
-                Field(salaryField, "salary"), Field(hoursField, "hours"), Field(overtimeField, "overtime"), Field(bonusField, "bonus"), Label("H1"),
-                Record("A3", "ivanov"), Record("A4", "petrov"), Record("A5", "sidorov"), Record("A6", "volkova"), Record("A7", "kim")
-            };
-            for (var i = 0; i < 5; i++)
-            {
-                list.Add(Data(hours[i], Records[i], "hours"));
-                list.Add(Data(salary[i], Records[i], "salary"));
-                list.Add(Data(overtime[i], Records[i], "overtime"));
-                list.Add(Data(bonus[i], Records[i], "bonus"));
-            }
-            return list.ToArray();
-        }
+        private static PrototypeTokenPlacement Data(string address, string recordId, string fieldId) =>
+            Placement(address, PrototypePlacementKind.Data, recordId: recordId, fieldId: fieldId);
 
-        private static PrototypeTokenPlacement Data(string address, string recordId, string fieldId) => Placement(address, PrototypePlacementKind.Data, recordId: recordId, fieldId: fieldId);
-        private static PrototypeTokenPlacement Record(string address, string recordId) => Placement(address, PrototypePlacementKind.RecordKey, recordId: recordId);
-        private static PrototypeTokenPlacement Field(string address, string fieldId) => Placement(address, PrototypePlacementKind.FieldKey, fieldId: fieldId);
-        private static PrototypeTokenPlacement Label(string address) => Placement(address, PrototypePlacementKind.Label, tokenId: "report.label", stringId: "label.report");
+        private static PrototypeTokenPlacement Record(string address, string recordId) =>
+            Placement(address, PrototypePlacementKind.RecordKey, recordId: recordId);
+
+        private static PrototypeTokenPlacement Field(string address, string fieldId) =>
+            Placement(address, PrototypePlacementKind.FieldKey, fieldId: fieldId);
+
+        private static PrototypeTokenPlacement Label(string address) =>
+            Placement(address, PrototypePlacementKind.Label, tokenId: "report.label", stringId: "label.report");
 
         private static PrototypeFormulaPlacement Formula(string address, FormulaKind kind)
         {
@@ -349,12 +344,23 @@ namespace ExcelHell.Prototype
             string recordId = null, string fieldId = null, string tokenId = null, string stringId = null)
         {
             ParseAddress(address, out var row, out var column);
-            return new PrototypeTokenPlacement { Row = row, Column = column, Kind = kind, RecordId = recordId, FieldId = fieldId, TokenId = tokenId, StringId = stringId };
+            return new PrototypeTokenPlacement
+            {
+                Row = row,
+                Column = column,
+                Kind = kind,
+                RecordId = recordId,
+                FieldId = fieldId,
+                TokenId = tokenId,
+                StringId = stringId
+            };
         }
 
         private static void ParseAddress(string address, out int row, out int column)
         {
-            if (string.IsNullOrWhiteSpace(address)) throw new ArgumentException("Cell address is required.", nameof(address));
+            if (string.IsNullOrWhiteSpace(address))
+                throw new ArgumentException("Cell address is required.", nameof(address));
+
             var index = 0;
             var oneBasedColumn = 0;
             while (index < address.Length && char.IsLetter(address[index]))
@@ -362,8 +368,11 @@ namespace ExcelHell.Prototype
                 oneBasedColumn = oneBasedColumn * 26 + (char.ToUpperInvariant(address[index]) - 'A' + 1);
                 index++;
             }
-            if (oneBasedColumn <= 0 || index >= address.Length || !int.TryParse(address.Substring(index), out var oneBasedRow) || oneBasedRow <= 0)
+
+            if (oneBasedColumn <= 0 || index >= address.Length ||
+                !int.TryParse(address.Substring(index), out var oneBasedRow) || oneBasedRow <= 0)
                 throw new FormatException($"Invalid worksheet address: {address}");
+
             row = oneBasedRow - 1;
             column = oneBasedColumn - 1;
         }
@@ -377,7 +386,10 @@ namespace ExcelHell.Prototype
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void ResetForPlayMode() => CurrentIndex = 0;
-        public static void SetCurrentIndex(int index) => CurrentIndex = Mathf.Clamp(index, 0, PrototypeLevelCatalog.Count - 1);
+
+        public static void SetCurrentIndex(int index) =>
+            CurrentIndex = Mathf.Clamp(index, 0, PrototypeLevelCatalog.Count - 1);
+
         public static bool Advance()
         {
             if (IsLast) return false;
