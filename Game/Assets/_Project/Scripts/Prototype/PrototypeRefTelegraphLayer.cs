@@ -6,16 +6,19 @@ using UnityEngine.UI;
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Draws the #REF! spawn/move telegraph as one stable translucent layer above the
-    /// complete cell presentation. It never participates in raycasts.
+    /// Draws #REF! telegraphs as stable translucent layers above complete cell presentation.
+    /// New outbreak spawn and active spread use deliberately different visual language.
     /// </summary>
     [DefaultExecutionOrder(1150)]
     public sealed class PrototypeRefTelegraphLayer : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
 
-        // Semi-transparent on purpose: the player must still read the token/formula below it.
-        private static readonly Color TelegraphColor = new(1f, 0.58f, 0.12f, 0.34f);
+        // Spawn = warning amber + strong border. Spread = danger red, no border.
+        private static readonly Color SpawnFillColor = new(1f, 0.68f, 0.12f, 0.28f);
+        private static readonly Color SpawnOutlineColor = new(1f, 0.88f, 0.28f, 0.95f);
+        private static readonly Color SpreadFillColor = new(0.96f, 0.22f, 0.10f, 0.30f);
+
         private static readonly Color FormulaBackgroundColor = new(0.88f, 0.92f, 0.97f, 1f);
         private static readonly Color SelectedBackgroundColor = new(0.65f, 0.84f, 1f, 1f);
         private static readonly Color ReportBackgroundColor = new(0.88f, 0.96f, 0.89f, 1f);
@@ -28,7 +31,13 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo PendingSpawnField = typeof(ExcelHellPrototype).GetField("pendingSpawnIntent", Flags);
         private static readonly FieldInfo CurrentIntentField = typeof(ExcelHellPrototype).GetField("currentIntent", Flags);
 
-        private readonly Dictionary<CellModel, Image> overlays = new();
+        private sealed class TelegraphVisual
+        {
+            public Image Image;
+            public Outline Outline;
+        }
+
+        private readonly Dictionary<CellModel, TelegraphVisual> overlays = new();
         private ExcelHellPrototype prototype;
         private CellModel[,] cells;
         private ExcelHellCellView[,] views;
@@ -49,40 +58,38 @@ namespace ExcelHell.Prototype
             if (current != prototype) Bind(current);
             if (prototype == null || cells == null || views == null) return;
 
-            CellModel target = null;
+            foreach (var visual in overlays.Values)
+                SetHidden(visual);
+
+            CellModel spawnTarget = null;
             var pendingValue = PendingSpawnField?.GetValue(prototype);
             if (pendingValue is SpawnIntent pending)
-                target = cells[pending.Row, pending.Column];
-            else
+                spawnTarget = cells[pending.Row, pending.Column];
+
+            CellModel spreadTarget = null;
+            var intentValue = CurrentIntentField?.GetValue(prototype);
+            if (intentValue is AnomalyIntent intent)
+                spreadTarget = cells[intent.TargetRow, intent.TargetColumn];
+
+            // Active spread may coexist with a countdown to a new outbreak. Show both.
+            // If both resolve to the same cell, spawn warning wins because it is the rarer event.
+            if (spreadTarget != null && spreadTarget != spawnTarget && spreadTarget.State == CellState.Normal)
             {
-                var intentValue = CurrentIntentField?.GetValue(prototype);
-                if (intentValue is AnomalyIntent intent)
-                    target = cells[intent.TargetRow, intent.TargetColumn];
+                RestoreUnderlyingBackground(spreadTarget);
+                ShowSpread(EnsureOverlay(spreadTarget));
             }
 
-            foreach (var pair in overlays)
-                if (pair.Value != null) pair.Value.enabled = false;
-
-            if (target == null || target.State != CellState.Normal) return;
-
-            // ExcelHellCellView still owns the legacy intent background. Neutralize that one
-            // target back to its normal presentation, then draw the unified transparent layer.
-            RestoreUnderlyingBackground(target);
-
-            var overlay = EnsureOverlay(target);
-            if (overlay == null) return;
-            overlay.color = TelegraphColor;
-            overlay.enabled = true;
-
-            // Stable ordering: always last. Unlike SetSiblingIndex(relativeIndex), this cannot
-            // swap places with Formula 2.0 Interaction on alternating frames.
-            overlay.rectTransform.SetAsLastSibling();
+            if (spawnTarget != null && spawnTarget.State == CellState.Normal)
+            {
+                RestoreUnderlyingBackground(spawnTarget);
+                ShowSpawn(EnsureOverlay(spawnTarget));
+            }
         }
 
         private void Bind(ExcelHellPrototype owner)
         {
-            foreach (var overlay in overlays.Values)
-                if (overlay != null) Destroy(overlay.gameObject);
+            foreach (var visual in overlays.Values)
+                if (visual?.Image != null) Destroy(visual.Image.gameObject);
             overlays.Clear();
 
             prototype = owner;
@@ -92,13 +99,13 @@ namespace ExcelHell.Prototype
             goals = prototype == null ? null : GoalsField?.GetValue(prototype) as List<ReportGoal>;
         }
 
-        private Image EnsureOverlay(CellModel cell)
+        private TelegraphVisual EnsureOverlay(CellModel cell)
         {
-            if (overlays.TryGetValue(cell, out var existing) && existing != null) return existing;
+            if (overlays.TryGetValue(cell, out var existing) && existing?.Image != null) return existing;
             var view = views[cell.Row, cell.Column];
             if (view == null) return null;
 
-            var go = new GameObject("REF Telegraph Overlay", typeof(RectTransform), typeof(Image));
+            var go = new GameObject("REF Telegraph Overlay", typeof(RectTransform), typeof(Image), typeof(Outline));
             go.transform.SetParent(view.transform, false);
             var rect = go.GetComponent<RectTransform>();
             rect.anchorMin = Vector2.zero;
@@ -108,11 +115,45 @@ namespace ExcelHell.Prototype
             rect.SetAsLastSibling();
 
             var image = go.GetComponent<Image>();
-            image.color = TelegraphColor;
             image.raycastTarget = false;
             image.enabled = false;
-            overlays[cell] = image;
-            return image;
+
+            var outline = go.GetComponent<Outline>();
+            outline.useGraphicAlpha = false;
+            outline.effectColor = SpawnOutlineColor;
+            outline.effectDistance = new Vector2(3f, -3f);
+            outline.enabled = false;
+
+            var visual = new TelegraphVisual { Image = image, Outline = outline };
+            overlays[cell] = visual;
+            return visual;
+        }
+
+        private static void SetHidden(TelegraphVisual visual)
+        {
+            if (visual?.Image != null) visual.Image.enabled = false;
+            if (visual?.Outline != null) visual.Outline.enabled = false;
+        }
+
+        private static void ShowSpawn(TelegraphVisual visual)
+        {
+            if (visual?.Image == null) return;
+            visual.Image.color = SpawnFillColor;
+            visual.Image.enabled = true;
+            visual.Image.rectTransform.SetAsLastSibling();
+            if (visual.Outline == null) return;
+            visual.Outline.effectColor = SpawnOutlineColor;
+            visual.Outline.effectDistance = new Vector2(3f, -3f);
+            visual.Outline.enabled = true;
+        }
+
+        private static void ShowSpread(TelegraphVisual visual)
+        {
+            if (visual?.Image == null) return;
+            visual.Image.color = SpreadFillColor;
+            visual.Image.enabled = true;
+            visual.Image.rectTransform.SetAsLastSibling();
+            if (visual.Outline != null) visual.Outline.enabled = false;
         }
 
         private void RestoreUnderlyingBackground(CellModel cell)
