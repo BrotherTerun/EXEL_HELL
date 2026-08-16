@@ -35,6 +35,12 @@ namespace ExcelHell.Narrative
 
         private void Update()
         {
+            if (PrototypeAuthoringMode.Active)
+            {
+                if (prototype != null) Bind(null);
+                return;
+            }
+
             var current = FindFirstObjectByType<ExcelHellPrototype>();
             if (current != prototype) Bind(current);
             if (prototype == null || cells == null) return;
