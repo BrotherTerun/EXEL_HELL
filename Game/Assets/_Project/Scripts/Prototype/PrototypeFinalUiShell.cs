@@ -12,26 +12,28 @@ namespace ExcelHell.Prototype
 
         private const float AppX = 24f;
         private const float AppY = -20f;
-        private const float AppWidth = 1220f;
+        private const float AppWidth = 1100f;
         private const float AppHeight = 856f;
 
         private const float WorksheetX = 40f;
         private const float WorksheetY = -132f;
-        private const float WorksheetWidth = 1188f;
+        private const float WorksheetWidth = 1068f;
         private const float WorksheetHeight = 720f;
         private const float FormulaY = -90f;
-        private const float FormulaWidth = 1124f;
+        private const float FormulaWidth = 1004f;
         private const float FormulaHeight = 34f;
 
         // Interactive/presentation landmarks live in the same 1600x900 safe frame as the spreadsheet.
-        // The office master art itself must stay centered at its authored position: moving the whole image to
-        // clear one landmark makes the desk, walls and character staging visibly drift from the composition.
+        // The office master art itself stays centered at its authored position. The app is deliberately 120 px
+        // narrower than the old shell: this restores the same table-to-clock gap that the former art pan faked,
+        // while keeping the painted office, wall clock and desk aligned to their authored composition.
         private const float OfficeSafeGap = 18f;
         private const float OfficeOuterMargin = 12f;
         private const float OfficeClockTop = 159f;
         private const float OfficeClockWidth = 235f;
         private const float OfficeClockHeight = 80f;
         private const float AvatarBottom = 18f;
+        private const float AvatarWidth = 334f;
         private const float AvatarHeight = 405f;
 
         private static float OfficeSafeLeft => AppX + AppWidth + OfficeSafeGap;
@@ -118,7 +120,7 @@ namespace ExcelHell.Prototype
             ApplyWorksheetGeometry();
             HideLegacyChrome();
             applied = true;
-            Debug.Log("[UI-SHELL] Visual shell v1.5 applied: 1600x900 presentation safe frame, authored office framing restored.");
+            Debug.Log("[UI-SHELL] Visual shell v1.6 applied: compact spreadsheet, authored office framing and clock composition.");
         }
 
         private void ApplyBackground()
@@ -151,8 +153,8 @@ namespace ExcelHell.Prototype
 
             CreateReservedButton(app.transform, "Tasks Reserved", "ЗАДАЧИ", 16f, -8f, 128f, 40f);
             CreateReservedButton(app.transform, "Help Reserved", "?", 152f, -8f, 44f, 40f);
-            CreateReservedButton(app.transform, "Chat Reserved", "✉", 974f, -8f, 56f, 40f);
-            CreateReservedButton(app.transform, "Menu Reserved", "МЕНЮ", 1038f, -8f, 166f, 40f);
+            CreateReservedButton(app.transform, "Chat Reserved", "✉", 854f, -8f, 56f, 40f);
+            CreateReservedButton(app.transform, "Menu Reserved", "МЕНЮ", 918f, -8f, 166f, 40f);
 
             // Production HUD still expects a Clock Reserved binding point. Keep a zero-size compatibility
             // anchor while the visible clock is rendered directly over the office wall display.
@@ -162,13 +164,13 @@ namespace ExcelHell.Prototype
 
             var formulaRow = CreatePanel(app.transform, "Formula Row Surface", PrototypeVisualTheme.SheetSoft);
             SetTopLeft(formulaRow.rectTransform, 16f, -70f, WorksheetWidth, FormulaHeight);
-            deleteReserved = CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1140f, -70f, 64f, FormulaHeight);
+            deleteReserved = CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1020f, -70f, 64f, FormulaHeight);
 
             var worksheetSurface = CreatePanel(app.transform, "Worksheet Surface", PrototypeVisualTheme.Sheet);
             SetTopLeft(worksheetSurface.rectTransform, 16f, -112f, WorksheetWidth, WorksheetHeight);
 
-            // Safe presentation strip. It is defined from the spreadsheet's right edge rather than from
-            // percentages of the current Canvas, so wider Game views cannot push the actor under the app.
+            // Safe presentation strip begins where the narrower app ends. This puts the real wall clock back
+            // into view without moving the office texture and shifts both the digital digits and actor zone left.
             var officeZone = new GameObject("Office Scene Reserved", typeof(RectTransform));
             officeZone.transform.SetParent(chromeRoot.transform, false);
             SetTopLeft(officeZone.GetComponent<RectTransform>(), OfficeSafeLeft, -76f, OfficeSafeWidth, 790f);
@@ -179,7 +181,9 @@ namespace ExcelHell.Prototype
 
             var avatar = new GameObject("Avatar Reserved", typeof(RectTransform));
             avatar.transform.SetParent(chromeRoot.transform, false);
-            SetBottomLeft(avatar.GetComponent<RectTransform>(), OfficeSafeLeft - 4f, AvatarBottom, OfficeSafeWidth + 8f, AvatarHeight);
+            // Keep the former 334 px actor slot width. If this expanded with OfficeSafeWidth, its centered
+            // protagonist would move only ~60 px instead of the full 120 px required to realign with the desk.
+            SetBottomLeft(avatar.GetComponent<RectTransform>(), OfficeSafeLeft - 4f, AvatarBottom, AvatarWidth, AvatarHeight);
         }
 
         private void BuildOfficeBackdrop()
