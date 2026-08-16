@@ -65,6 +65,19 @@ namespace ExcelHell.Prototype
                 text.font = IsSpreadsheetText(text.transform) ? MonoFont : UiFont;
             }
 
+            foreach (var button in canvas.GetComponentsInChildren<Button>(true))
+            {
+                var colors = button.colors;
+                colors.normalColor = Color.white;
+                colors.highlightedColor = new Color(1.08f, 1.08f, 1.08f, 1f);
+                colors.pressedColor = new Color(0.82f, 0.84f, 0.88f, 1f);
+                colors.selectedColor = Color.white;
+                colors.disabledColor = new Color(0.52f, 0.55f, 0.60f, 0.65f);
+                colors.colorMultiplier = 1f;
+                colors.fadeDuration = 0.08f;
+                button.colors = colors;
+            }
+
             SkinImage("Topbar Surface", Chrome);
             SkinImage("Formula Row Surface", SheetSoft);
             SkinImage("Worksheet Surface", Sheet);
@@ -99,6 +112,13 @@ namespace ExcelHell.Prototype
                     text.font = MonoFont;
                     text.color = Ink;
                 }
+            }
+
+            var spreadsheet = FindRect("Spreadsheet");
+            if (spreadsheet != null)
+            {
+                foreach (var text in spreadsheet.GetComponentsInChildren<Text>(true))
+                    text.font = MonoFont;
             }
         }
 
