@@ -82,6 +82,7 @@ namespace ExcelHell.Narrative
         public string levelId;
         public NarrativeTriggerType trigger;
         public int triggerNumber;
+        public string triggerSubjectId;
         public bool once = true;
         [Min(0f)] public float delay;
         public List<NarrativeEffectDefinition> effects = new();
