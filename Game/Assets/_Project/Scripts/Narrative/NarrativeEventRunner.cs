@@ -76,6 +76,11 @@ namespace ExcelHell.Narrative
             events = definitions?.Where(definition => definition != null).ToList()
                      ?? new List<NarrativeEventDefinition>();
             consumed.Clear();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            NarrativeDefinitionValidator.LogIssues(events, this);
+#endif
+
             if (verboseLogging)
                 Debug.Log($"[NARRATIVE] Loaded {events.Count} event(s) for level '{levelId}'.");
         }
@@ -161,17 +166,7 @@ namespace ExcelHell.Narrative
                         $"duration={effect.lifetime.duration:0.##} cell=({effect.row},{effect.column}) value={effect.intValue}");
                 }
 
-                INarrativeEffectReceiver receiver = null;
-                for (var i = receivers.Count - 1; i >= 0; i--)
-                {
-                    if (receivers[i] == null)
-                    {
-                        receivers.RemoveAt(i);
-                        continue;
-                    }
-                    if (receiver == null && receivers[i].CanReceive(effect.type)) receiver = receivers[i];
-                }
-
+                var receiver = ChooseReceiver(effect.type);
                 if (receiver == null)
                 {
                     if (verboseLogging)
@@ -186,8 +181,37 @@ namespace ExcelHell.Narrative
             }
             draining = false;
         }
+
+        private INarrativeEffectReceiver ChooseReceiver(NarrativeEffectType type)
+        {
+            INarrativeEffectReceiver fallback = null;
+
+            for (var i = receivers.Count - 1; i >= 0; i--)
+            {
+                var receiver = receivers[i];
+                if (receiver == null)
+                {
+                    receivers.RemoveAt(i);
+                    continue;
+                }
+
+                if (!receiver.CanReceive(type)) continue;
+                if (receiver is DebugNarrativeReceiver)
+                {
+                    fallback ??= receiver;
+                    continue;
+                }
+
+                return receiver;
+            }
+
+            return fallback;
+        }
     }
 
+    /// <summary>
+    /// Editor/development fallback only. A real renderer always wins receiver selection when present.
+    /// </summary>
     public sealed class DebugNarrativeReceiver : MonoBehaviour, INarrativeEffectReceiver
     {
         public bool CanReceive(NarrativeEffectType type) => true;
