@@ -90,7 +90,17 @@ namespace ExcelHell.Prototype
         private void EnsureMoodSprites()
         {
             if (normalSprite != null) return;
+
             playerSheet = Resources.Load<Texture2D>("Art/Player");
+            if (playerSheet == null)
+            {
+                // A Sprite (Multiple) importer may expose sub-sprites more readily than the texture asset itself.
+                // Pulling the shared texture from any imported sprite keeps visual-pass code independent of the
+                // current Sprite Editor slicing metadata.
+                var importedSprite = Resources.LoadAll<Sprite>("Art/Player").FirstOrDefault();
+                playerSheet = importedSprite != null ? importedSprite.texture : null;
+            }
+
             if (playerSheet == null)
             {
                 Debug.LogWarning("[PROTAGONIST/UI] Resources/Art/Player texture not found; protagonist art disabled.");
@@ -105,6 +115,8 @@ namespace ExcelHell.Prototype
             tiredSprite = Crop("Protagonist_Tired", new Rect(180f, 614f, 250f, 195f));
             alarmedSprite = Crop("Protagonist_Alarmed", new Rect(190f, 414f, 250f, 205f));
             psychoticSprite = Crop("Protagonist_Psychotic", new Rect(185f, 214f, 255f, 210f));
+
+            Debug.Log($"[PROTAGONIST/UI] Visual sheet ready ({playerSheet.width}x{playerSheet.height}); static mood sprites prepared.");
         }
 
         private Sprite Crop(string spriteName, Rect rect)
