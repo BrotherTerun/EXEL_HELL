@@ -177,6 +177,16 @@ namespace ExcelHell.Narrative
         {
             if (levelCompletedPublished) return;
             if (FinishedField?.GetValue(prototype) is not bool finished || !finished) return;
+            if (goals == null || goals.Count == 0) return;
+
+            // The prototype also sets finished=true on deadline. Narrative LevelCompleted is intentionally
+            // success-only: every current ReportGoal must still be satisfied when the run finishes.
+            foreach (var goal in goals)
+            {
+                var target = cells[goal.TargetRow, goal.TargetColumn];
+                if (target.State != CellState.Normal || !goal.IsSatisfiedBy(target.Occupant)) return;
+            }
+
             levelCompletedPublished = true;
             NarrativeSignals.Publish(new NarrativeTrigger(
                 NarrativeTriggerType.LevelCompleted,
