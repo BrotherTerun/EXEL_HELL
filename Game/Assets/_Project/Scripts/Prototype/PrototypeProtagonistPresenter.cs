@@ -24,7 +24,6 @@ namespace ExcelHell.Prototype
         private NarrativeEffectTicket activeTicket;
         private Coroutine timeoutRoutine;
         private bool activeShown;
-        private bool pendingLogged;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -108,13 +107,9 @@ namespace ExcelHell.Prototype
             CompleteActive("replaced");
             activeTicket = ticket;
             activeShown = false;
-            pendingLogged = false;
 
             if (!TryShowActive())
-            {
-                pendingLogged = true;
                 Debug.Log($"[PROTAGONIST/UI] Pending event={ticket.Request.EventId}; waiting for Avatar Reserved.");
-            }
         }
 
         private bool TryShowActive()
@@ -184,7 +179,6 @@ namespace ExcelHell.Prototype
                 Debug.Log($"[PROTAGONIST/UI] Hide event={eventId} reason={reason}.");
             }
             activeShown = false;
-            pendingLogged = false;
         }
 
         private void DestroyBubble()
