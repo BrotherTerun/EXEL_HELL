@@ -60,8 +60,8 @@ namespace ExcelHell.Prototype
 
         private T Ensure<T>() where T : MonoBehaviour
         {
-            var child = GetComponent<T>();
-            return child != null ? child : gameObject.AddComponent<T>();
+            var existing = FindFirstObjectByType<T>(FindObjectsInactive.Include);
+            return existing != null ? existing : gameObject.AddComponent<T>();
         }
 
         private static void SetEnabled(Behaviour behaviour, bool value)
