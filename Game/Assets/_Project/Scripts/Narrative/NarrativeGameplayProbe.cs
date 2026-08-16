@@ -103,6 +103,7 @@ namespace ExcelHell.Narrative
         {
             if (TurnField?.GetValue(prototype) is not int turn || turn == lastTurn) return;
             lastTurn = turn;
+            if (turn <= 0) return;
             NarrativeSignals.Publish(new NarrativeTrigger(NarrativeTriggerType.ActionNumber, turn));
         }
 
