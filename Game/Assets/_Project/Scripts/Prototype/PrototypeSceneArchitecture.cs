@@ -1,3 +1,4 @@
+using System.Reflection;
 using ExcelHell.Application;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -6,13 +7,15 @@ using UnityEngine.SceneManagement;
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Scene-local entry point. The MonoBehaviour name intentionally matches this file name:
-    /// Unity serializes scene script references through the MonoScript asset and requires a
-    /// concrete native-extension component as the file's main type.
+    /// Scene-local bootstrap for production scenes. The scene context owns level selection,
+    /// worksheet creation and first-frame authored layout application.
     /// </summary>
     [DefaultExecutionOrder(-10000)]
     public sealed class PrototypeSceneArchitecture : MonoBehaviour
     {
+        private const BindingFlags StaticPrivate = BindingFlags.Static | BindingFlags.NonPublic;
+        private static readonly MethodInfo ApplyLevelMethod = typeof(PrototypeLevelDatasetAdapter).GetMethod("Apply", StaticPrivate);
+
         [SerializeField] private PrototypeSceneRole role = PrototypeSceneRole.Gameplay;
         [SerializeField, Min(0)] private int startLevelIndex;
 
@@ -32,25 +35,27 @@ namespace ExcelHell.Prototype
                 return;
             }
 
-            // Direct scene launch in Unity should not be blocked by the application menu shell.
+            // Direct scene launch in Unity should not be blocked by the persistent menu shell.
             if (ExcelHellApplication.ShellAvailable && !ExcelHellApplication.GameplayActive)
             {
-                var app = FindFirstObjectByType<ExcelHellApplication>();
+                var app = FindFirstObjectByType<ExcelHellApplication>(FindObjectsInactive.Include);
                 if (app != null)
                 {
                     app.gameObject.SetActive(false);
                     Destroy(app.gameObject);
                 }
 
-                var shellGuard = FindFirstObjectByType<PrototypeShellGuard>();
+                var shellGuard = FindFirstObjectByType<PrototypeShellGuard>(FindObjectsInactive.Include);
                 if (shellGuard != null) shellGuard.enabled = false;
             }
 
+            // Menu-driven NEW GAME / CONTINUE / LOAD has already selected the proper index.
+            // A scene launched directly from the editor falls back to its serialized start index.
             if (!ExcelHellApplication.ShellAvailable || !ExcelHellApplication.GameplayActive)
                 PrototypeLevelRuntime.SetCurrentIndex(Mathf.Clamp(startLevelIndex, 0, PrototypeLevelCatalog.Count - 1));
 
             PrototypeAuthoringMode.Active = role == PrototypeSceneRole.Constructor;
-            CreateGameplayRuntime();
+            InitializeGameplayRuntime();
         }
 
         private void Start()
@@ -65,12 +70,16 @@ namespace ExcelHell.Prototype
                 DestroyIfPresent<PrototypeRefTelegraphLayer>();
                 DestroyIfPresent<PrototypeLevelConstructor>();
                 DestroyIfPresent<PrototypeAuthoringGuard>();
+                DestroyIfPresent<PrototypeContextualTutorial>();
                 return;
             }
 
+            // Legacy tutorial is never part of FC2 production scenes. Removing it in Start means
+            // an old AfterSceneLoad bootstrap cannot draw even one OnGUI frame.
+            DestroyIfPresent<PrototypeContextualTutorial>();
+
             if (role == PrototypeSceneRole.Constructor)
             {
-                // Legacy runtime bootstraps may have spawned these before the scene entry ran.
                 DestroyIfPresent<PrototypeLevelFlow>();
                 DestroyIfPresent<PrototypeRefTelegraphLayer>();
                 CreateService<PrototypeAuthoringGuard>("[AUTHORING] Gameplay Freeze");
@@ -93,6 +102,8 @@ namespace ExcelHell.Prototype
         {
             if (sceneTransitionRequested) return;
 
+            // Kept as a defensive fallback for old menu calls. Current NEW GAME / CONTINUE / LOAD
+            // already load Gameplay directly from ExcelHellApplication.StartGameplay().
             if (role == PrototypeSceneRole.Menu && ExcelHellApplication.ShellAvailable && ExcelHellApplication.GameplayActive)
             {
                 sceneTransitionRequested = true;
@@ -113,9 +124,15 @@ namespace ExcelHell.Prototype
                 PrototypeAuthoringMode.Active = false;
         }
 
-        private void CreateGameplayRuntime()
+        private void InitializeGameplayRuntime()
         {
-            CreateService<ExcelHellPrototype>("[GAMEPLAY] Worksheet Core");
+            // Scene-authored Worksheet Core exists before Awake ordering reaches ExcelHellPrototype.
+            // Disable it while services are prepared, then activate and immediately overwrite its
+            // legacy seed model with the authored level before Unity can render the first frame.
+            var worksheet = FindFirstObjectByType<ExcelHellPrototype>(FindObjectsInactive.Include);
+            if (worksheet != null && worksheet.gameObject.activeSelf)
+                worksheet.gameObject.SetActive(false);
+
             CreateService<PrototypeLevelDatasetAdapter>("[GAMEPLAY] Level Dataset");
             CreateService<PrototypeFormulaCells>("[GAMEPLAY] Formula Cells 2.0");
             CreateService<PrototypeFormulaLevelCompatibility>("[GAMEPLAY] Formula Compatibility");
@@ -130,6 +147,20 @@ namespace ExcelHell.Prototype
                 CreateService<PrototypeAuthoringGuard>("[AUTHORING] Gameplay Freeze");
                 CreateService<PrototypeLevelConstructor>("[AUTHORING] Level Constructor");
             }
+
+            if (worksheet == null)
+            {
+                var core = new GameObject("[GAMEPLAY] Worksheet Core");
+                worksheet = core.AddComponent<ExcelHellPrototype>();
+            }
+            else
+            {
+                worksheet.gameObject.SetActive(true); // ExcelHellPrototype.Awake runs here.
+            }
+
+            // The adapter normally applies in LateUpdate. Production scenes apply it now as well,
+            // before first render, eliminating the one-frame legacy worksheet/tutorial flash.
+            ApplyLevelMethod?.Invoke(null, new object[] { worksheet, PrototypeLevelRuntime.Current });
         }
 
         private static void EnsureMainCamera()
@@ -149,7 +180,7 @@ namespace ExcelHell.Prototype
 
         private T CreateService<T>(string objectName) where T : MonoBehaviour
         {
-            var existing = FindFirstObjectByType<T>();
+            var existing = FindFirstObjectByType<T>(FindObjectsInactive.Include);
             if (existing != null) return existing;
 
             var child = new GameObject(objectName);
@@ -159,7 +190,7 @@ namespace ExcelHell.Prototype
 
         private static void DestroyIfPresent<T>() where T : MonoBehaviour
         {
-            var item = FindFirstObjectByType<T>();
+            var item = FindFirstObjectByType<T>(FindObjectsInactive.Include);
             if (item != null) Destroy(item.gameObject);
         }
     }
