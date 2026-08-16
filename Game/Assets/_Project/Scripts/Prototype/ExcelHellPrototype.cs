@@ -329,7 +329,6 @@ namespace ExcelHell.Prototype
 
         private void BuildGrid(Transform parent)
         {
-            // Larger worksheet cells improve readability while keeping the in-cell font size unchanged.
             const float maxWidth = 900f;
             const float maxHeight = 720f;
             var cellWidth = Mathf.Min(100f, maxWidth / (columns + 1));
@@ -394,7 +393,6 @@ namespace ExcelHell.Prototype
             outline.effectColor = new Color(0.77f, 0.79f, 0.82f, 1f);
             outline.effectDistance = new Vector2(1f, -1f);
 
-            // Intentionally unchanged font size: readability comes from cell space, not typography scaling.
             var label = CreateText(go.transform, string.Empty, 14, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(label.rectTransform, 3);
             label.raycastTarget = false;
@@ -871,7 +869,8 @@ namespace ExcelHell.Prototype
         }
 
         private bool IsReportTarget(int row, int column) => goals.Any(g => g.TargetRow == row && g.TargetColumn == column);
-        private bool IsReportInterfaceCell(int row, int column) => column == reportColumn && (row == 0 || IsReportTarget(row, column));
+        private bool IsReportInterfaceCell(int row, int column) =>
+            (column == reportColumn && row == 0) || IsReportTarget(row, column);
 
         private bool IsIntentTarget(int row, int column)
         {
@@ -1010,7 +1009,6 @@ namespace ExcelHell.Prototype
             label.fontStyle = reportTarget || model.Occupant?.Kind == ContentKind.RecordKey || model.Occupant?.Kind == ContentKind.FieldKey
                 ? FontStyle.Bold : FontStyle.Normal;
 
-            // Formula-cell overlay owns the visible text. Occupant remains in the model but is not drawn twice.
             label.text = model.IsFormula ? string.Empty : displayToken(model.Occupant, false);
         }
 
