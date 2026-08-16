@@ -6,18 +6,25 @@ using UnityEngine.UI;
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Keeps #REF! spawn/move telegraph visually above FormulaCell background tint.
-    /// Formula Cells 2.0 repaints the base cell Image in LateUpdate, so formula targets need
-    /// a dedicated render layer between the base background and the interaction/text overlay.
+    /// Draws the #REF! spawn/move telegraph as one stable translucent layer above the
+    /// complete cell presentation. It never participates in raycasts.
     /// </summary>
     [DefaultExecutionOrder(1150)]
     public sealed class PrototypeRefTelegraphLayer : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly Color TelegraphColor = new(1f, 0.73f, 0.34f, 1f);
+
+        // Semi-transparent on purpose: the player must still read the token/formula below it.
+        private static readonly Color TelegraphColor = new(1f, 0.58f, 0.12f, 0.34f);
+        private static readonly Color FormulaBackgroundColor = new(0.88f, 0.92f, 0.97f, 1f);
+        private static readonly Color SelectedBackgroundColor = new(0.65f, 0.84f, 1f, 1f);
+        private static readonly Color ReportBackgroundColor = new(0.88f, 0.96f, 0.89f, 1f);
+        private static readonly Color KeyBackgroundColor = new(0.91f, 0.94f, 0.98f, 1f);
 
         private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
         private static readonly FieldInfo ViewsField = typeof(ExcelHellPrototype).GetField("views", Flags);
+        private static readonly FieldInfo SelectionField = typeof(ExcelHellPrototype).GetField("selection", Flags);
+        private static readonly FieldInfo GoalsField = typeof(ExcelHellPrototype).GetField("goals", Flags);
         private static readonly FieldInfo PendingSpawnField = typeof(ExcelHellPrototype).GetField("pendingSpawnIntent", Flags);
         private static readonly FieldInfo CurrentIntentField = typeof(ExcelHellPrototype).GetField("currentIntent", Flags);
 
@@ -25,6 +32,8 @@ namespace ExcelHell.Prototype
         private ExcelHellPrototype prototype;
         private CellModel[,] cells;
         private ExcelHellCellView[,] views;
+        private List<CellModel> selection;
+        private List<ReportGoal> goals;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -54,15 +63,20 @@ namespace ExcelHell.Prototype
             foreach (var pair in overlays)
                 if (pair.Value != null) pair.Value.enabled = false;
 
-            // Normal cells already render telegraph correctly through ExcelHellCellView.
-            // The extra layer is needed only when FormulaCells would otherwise repaint it.
-            if (target == null || !target.IsFormula || target.State != CellState.Normal) return;
+            if (target == null || target.State != CellState.Normal) return;
+
+            // ExcelHellCellView still owns the legacy intent background. Neutralize that one
+            // target back to its normal presentation, then draw the unified transparent layer.
+            RestoreUnderlyingBackground(target);
 
             var overlay = EnsureOverlay(target);
             if (overlay == null) return;
             overlay.color = TelegraphColor;
             overlay.enabled = true;
-            PlaceBelowFormulaInteraction(overlay.rectTransform);
+
+            // Stable ordering: always last. Unlike SetSiblingIndex(relativeIndex), this cannot
+            // swap places with Formula 2.0 Interaction on alternating frames.
+            overlay.rectTransform.SetAsLastSibling();
         }
 
         private void Bind(ExcelHellPrototype owner)
@@ -74,6 +88,8 @@ namespace ExcelHell.Prototype
             prototype = owner;
             cells = prototype == null ? null : CellsField?.GetValue(prototype) as CellModel[,];
             views = prototype == null ? null : ViewsField?.GetValue(prototype) as ExcelHellCellView[,];
+            selection = prototype == null ? null : SelectionField?.GetValue(prototype) as List<CellModel>;
+            goals = prototype == null ? null : GoalsField?.GetValue(prototype) as List<ReportGoal>;
         }
 
         private Image EnsureOverlay(CellModel cell)
@@ -89,38 +105,52 @@ namespace ExcelHell.Prototype
             rect.anchorMax = Vector2.one;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
+            rect.SetAsLastSibling();
 
             var image = go.GetComponent<Image>();
             image.color = TelegraphColor;
             image.raycastTarget = false;
             image.enabled = false;
             overlays[cell] = image;
-            PlaceBelowFormulaInteraction(rect);
             return image;
         }
 
-        private static void PlaceBelowFormulaInteraction(RectTransform telegraph)
+        private void RestoreUnderlyingBackground(CellModel cell)
         {
-            if (telegraph == null || telegraph.parent == null) return;
-            var parent = telegraph.parent;
-            Transform formulaInteraction = null;
-            for (var i = 0; i < parent.childCount; i++)
-            {
-                var child = parent.GetChild(i);
-                if (child.name == "Formula 2.0 Interaction")
-                {
-                    formulaInteraction = child;
-                    break;
-                }
-            }
+            var view = views[cell.Row, cell.Column];
+            var background = view == null ? null : view.GetComponent<Image>();
+            if (background == null) return;
 
-            if (formulaInteraction == null)
+            if (cell.IsFormula)
             {
-                telegraph.SetAsLastSibling();
+                background.color = FormulaBackgroundColor;
                 return;
             }
 
-            telegraph.SetSiblingIndex(formulaInteraction.GetSiblingIndex());
+            if (selection != null && selection.Contains(cell))
+            {
+                background.color = SelectedBackgroundColor;
+                return;
+            }
+
+            if (IsReportTarget(cell))
+            {
+                background.color = ReportBackgroundColor;
+                return;
+            }
+
+            background.color = cell.Occupant?.Kind == ContentKind.RecordKey || cell.Occupant?.Kind == ContentKind.FieldKey
+                ? KeyBackgroundColor
+                : Color.white;
+        }
+
+        private bool IsReportTarget(CellModel cell)
+        {
+            if (goals == null || cell == null) return false;
+            foreach (var goal in goals)
+                if (goal.TargetRow == cell.Row && goal.TargetColumn == cell.Column)
+                    return true;
+            return false;
         }
     }
 }
