@@ -23,14 +23,22 @@ namespace ExcelHell.Prototype
         private const float FormulaWidth = 1124f;
         private const float FormulaHeight = 34f;
 
-        // The authored wall clock begins at roughly 71.4% of the office master image.
-        // With the approved large worksheet that landmark would otherwise sit underneath the app.
-        // Pan only the office art (and art-bound anchors) to the right; the worksheet remains fixed.
+        // The office illustration is decorative and may crop at the viewport edges. Interactive/presentation
+        // landmarks must not depend on the current Canvas aspect: they live in the same 1600x900 safe frame
+        // as the spreadsheet. The painted wall clock begins at ~71.4% of the office master image, so pan
+        // the art until that landmark clears the approved large worksheet.
         private const float OfficeClockArtMinX = 0.714f;
         private const float OfficeSafeGap = 18f;
-        private static float OfficeArtPanX => Mathf.Max(
-            0f,
-            AppX + AppWidth + OfficeSafeGap - OfficeClockArtMinX * ReferenceWidth);
+        private const float OfficeOuterMargin = 12f;
+        private const float OfficeClockTop = 159f;
+        private const float OfficeClockWidth = 235f;
+        private const float OfficeClockHeight = 80f;
+        private const float AvatarBottom = 18f;
+        private const float AvatarHeight = 405f;
+
+        private static float OfficeSafeLeft => AppX + AppWidth + OfficeSafeGap;
+        private static float OfficeSafeWidth => Mathf.Max(260f, ReferenceWidth - OfficeSafeLeft - OfficeOuterMargin);
+        private static float OfficeArtPanX => Mathf.Max(0f, OfficeSafeLeft - OfficeClockArtMinX * ReferenceWidth);
 
         private ExcelHellPrototype prototype;
         private Canvas canvas;
@@ -111,7 +119,7 @@ namespace ExcelHell.Prototype
             ApplyWorksheetGeometry();
             HideLegacyChrome();
             applied = true;
-            Debug.Log($"[UI-SHELL] Visual shell v1.3 applied: full worksheet with office-art pan {OfficeArtPanX:0.#}px.");
+            Debug.Log($"[UI-SHELL] Visual shell v1.4 applied: 1600x900 presentation safe frame, office pan {OfficeArtPanX:0.#}px.");
         }
 
         private void ApplyBackground()
@@ -160,21 +168,19 @@ namespace ExcelHell.Prototype
             var worksheetSurface = CreatePanel(app.transform, "Worksheet Surface", PrototypeVisualTheme.Sheet);
             SetTopLeft(worksheetSurface.rectTransform, 16f, -112f, WorksheetWidth, WorksheetHeight);
 
+            // Safe presentation strip. It is defined from the spreadsheet's right edge rather than from
+            // percentages of the current Canvas, so wider Game views cannot push the actor under the app.
             var officeZone = new GameObject("Office Scene Reserved", typeof(RectTransform));
             officeZone.transform.SetParent(chromeRoot.transform, false);
-            SetNormalizedRegion(officeZone.GetComponent<RectTransform>(), 0.66f, 0.03f, 0.97f, 0.88f);
+            SetTopLeft(officeZone.GetComponent<RectTransform>(), OfficeSafeLeft, -76f, OfficeSafeWidth, 790f);
 
             var officeClock = new GameObject("Office Clock Display", typeof(RectTransform));
             officeClock.transform.SetParent(chromeRoot.transform, false);
-            // Matches the dark digital wall display in the 1672x941 office master image.
-            SetNormalizedRegion(officeClock.GetComponent<RectTransform>(), 0.714f, 0.734f, 0.861f, 0.823f);
-            officeClock.GetComponent<RectTransform>().anchoredPosition = new Vector2(OfficeArtPanX, 0f);
+            SetTopLeft(officeClock.GetComponent<RectTransform>(), OfficeSafeLeft, -OfficeClockTop, OfficeClockWidth, OfficeClockHeight);
 
             var avatar = new GameObject("Avatar Reserved", typeof(RectTransform));
             avatar.transform.SetParent(chromeRoot.transform, false);
-            // Avatar is a presentation sprite rather than a painted landmark, so it stays in the stable
-            // gameplay-safe region while only the office art underneath is panned.
-            SetNormalizedRegion(avatar.GetComponent<RectTransform>(), 0.67f, 0.04f, 0.94f, 0.46f);
+            SetBottomLeft(avatar.GetComponent<RectTransform>(), OfficeSafeLeft - 4f, AvatarBottom, OfficeSafeWidth + 8f, AvatarHeight);
         }
 
         private void BuildOfficeBackdrop()
@@ -301,13 +307,12 @@ namespace ExcelHell.Prototype
             rect.localScale = Vector3.one;
         }
 
-        private static void SetNormalizedRegion(RectTransform rect, float minX, float minY, float maxX, float maxY)
+        private static void SetBottomLeft(RectTransform rect, float x, float y, float width, float height)
         {
-            rect.anchorMin = new Vector2(minX, minY);
-            rect.anchorMax = new Vector2(maxX, maxY);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = Vector2.zero;
+            rect.anchorMin = rect.anchorMax = Vector2.zero;
+            rect.pivot = Vector2.zero;
+            rect.anchoredPosition = new Vector2(x, y);
+            rect.sizeDelta = new Vector2(width, height);
             rect.localScale = Vector3.one;
         }
 
