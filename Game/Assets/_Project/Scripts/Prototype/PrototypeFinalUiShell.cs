@@ -4,11 +4,6 @@ using UnityEngine.UI;
 
 namespace ExcelHell.Prototype
 {
-    /// <summary>
-    /// Production gameplay-window layout pass. This component owns geometry only: it preserves the worksheet,
-    /// formula interactions and existing button callbacks, while reserving stable presentation zones for the
-    /// protagonist, clock, chat and later pixel-art office shell.
-    /// </summary>
     [DefaultExecutionOrder(1800)]
     public sealed class PrototypeFinalUiShell : MonoBehaviour
     {
@@ -19,16 +14,13 @@ namespace ExcelHell.Prototype
         private const float WindowY = -28f;
         private const float WindowWidth = 1536f;
         private const float WindowHeight = 844f;
-
         private const float WorksheetX = 54f;
         private const float WorksheetY = -132f;
         private const float WorksheetWidth = 918f;
         private const float WorksheetHeight = 684f;
-
         private const float RailX = 1000f;
         private const float RailY = -100f;
         private const float RailWidth = 540f;
-        private const float RailHeight = 712f;
 
         private ExcelHellPrototype prototype;
         private Canvas canvas;
@@ -53,6 +45,12 @@ namespace ExcelHell.Prototype
 
         private void LateUpdate()
         {
+            if (PrototypeAuthoringMode.Active)
+            {
+                if (prototype != null || chromeRoot != null) Bind(null);
+                return;
+            }
+
             var current = FindFirstObjectByType<ExcelHellPrototype>();
             if (current != prototype) Bind(current);
             if (prototype == null || applied) return;
@@ -71,15 +69,12 @@ namespace ExcelHell.Prototype
             title = null;
             legacyTurn = null;
             DestroyChrome();
-
-            if (prototype == null) return;
-            canvas = prototype.GetComponentsInChildren<Canvas>(true).FirstOrDefault();
+            if (prototype != null) canvas = prototype.GetComponentsInChildren<Canvas>(true).FirstOrDefault();
         }
 
         private void TryApply()
         {
             if (canvas == null) return;
-
             var scaler = canvas.GetComponent<CanvasScaler>();
             if (scaler != null)
             {
@@ -93,13 +88,10 @@ namespace ExcelHell.Prototype
             spreadsheet = FindRect(canvas.transform, "Spreadsheet");
             sidebar = FindRect(canvas.transform, "Sidebar");
             formulaBar = FindRect(canvas.transform, "Formula Bar");
-
             var labels = background != null ? background.GetComponentsInChildren<Text>(true) : System.Array.Empty<Text>();
             title = labels.FirstOrDefault(text => text.fontSize >= 26)?.rectTransform;
             legacyTurn = labels.FirstOrDefault(text => text != null && text.rectTransform != title && text.fontSize == 20)?.rectTransform;
-
-            if (background == null || spreadsheet == null || sidebar == null || formulaBar == null)
-                return;
+            if (background == null || spreadsheet == null || sidebar == null || formulaBar == null) return;
 
             ApplyBackground();
             BuildChrome();
@@ -107,7 +99,6 @@ namespace ExcelHell.Prototype
             ApplySidebarGeometry();
             ApplyHeaderGeometry();
             applied = true;
-
             Debug.Log("[UI-SHELL] Final gameplay layout applied at 1600x900 reference resolution.");
         }
 
@@ -125,31 +116,23 @@ namespace ExcelHell.Prototype
             chromeRoot.transform.SetAsFirstSibling();
             var rootRect = chromeRoot.GetComponent<RectTransform>();
             SetTopLeft(rootRect, WindowX, WindowY, WindowWidth, WindowHeight);
-
             var window = CreatePanel(chromeRoot.transform, "Window Surface", new Color(0.91f, 0.925f, 0.94f, 1f));
             Stretch(window.rectTransform);
-
             var header = CreatePanel(chromeRoot.transform, "Window Header", new Color(0.12f, 0.14f, 0.17f, 1f));
             SetTopLeft(header.rectTransform, 0f, 0f, WindowWidth, 58f);
-
             var workSurface = CreatePanel(chromeRoot.transform, "Worksheet Surface", new Color(0.965f, 0.97f, 0.975f, 1f));
             SetTopLeft(workSurface.rectTransform, 16f, -74f, 928f, 696f);
-
             var railSurface = CreatePanel(chromeRoot.transform, "Right Rail Surface", new Color(0.89f, 0.905f, 0.92f, 1f));
             SetTopLeft(railSurface.rectTransform, 960f, -74f, 560f, 696f);
-
             var avatar = CreatePanel(chromeRoot.transform, "Avatar Reserved", new Color(0.18f, 0.20f, 0.24f, 1f));
             SetTopLeft(avatar.rectTransform, 976f, -92f, 164f, 164f);
             AddPlaceholderLabel(avatar.transform, "PROTAGONIST", 13);
-
             var clock = CreatePanel(chromeRoot.transform, "Clock Reserved", new Color(0.09f, 0.105f, 0.125f, 1f));
             SetTopLeft(clock.rectTransform, 1156f, -92f, 348f, 72f);
             AddPlaceholderLabel(clock.transform, "09:00  —  18:00", 22);
-
             var chat = CreatePanel(chromeRoot.transform, "Chat Reserved", new Color(0.82f, 0.84f, 0.87f, 1f));
             SetTopLeft(chat.rectTransform, 1156f, -180f, 348f, 76f);
             AddPlaceholderLabel(chat.transform, "CHAT / NOTIFICATIONS", 14);
-
             var footer = CreatePanel(chromeRoot.transform, "Footer Reserved", new Color(0.12f, 0.14f, 0.17f, 1f));
             SetTopLeft(footer.rectTransform, 0f, -786f, WindowWidth, 58f);
             AddPlaceholderLabel(footer.transform, "SYSTEM / STATUS", 12);
@@ -157,20 +140,15 @@ namespace ExcelHell.Prototype
 
         private void ApplyWorksheetGeometry()
         {
-            // Grid already contains the authored worksheet and all interaction components. Only geometry changes.
             spreadsheet.SetParent(background, false);
             SetTopLeft(spreadsheet, WorksheetX, WorksheetY, WorksheetWidth, WorksheetHeight);
-
             var grid = spreadsheet.GetComponent<GridLayoutGroup>();
             if (grid != null)
             {
                 var columnCount = Mathf.Max(1, grid.constraintCount);
                 var rowCount = Mathf.Max(1, spreadsheet.childCount / columnCount);
-                grid.cellSize = new Vector2(
-                    Mathf.Floor(WorksheetWidth / columnCount),
-                    Mathf.Floor(WorksheetHeight / rowCount));
+                grid.cellSize = new Vector2(Mathf.Floor(WorksheetWidth / columnCount), Mathf.Floor(WorksheetHeight / rowCount));
             }
-
             formulaBar.SetParent(background, false);
             SetTopLeft(formulaBar, WorksheetX, -94f, WorksheetWidth, 30f);
         }
@@ -179,7 +157,6 @@ namespace ExcelHell.Prototype
         {
             sidebar.SetParent(background, false);
             SetTopLeft(sidebar, RailX, RailY - 178f, RailWidth, 516f);
-
             var image = sidebar.GetComponent<Image>();
             if (image != null) image.color = new Color(0.94f, 0.945f, 0.95f, 1f);
         }
@@ -193,8 +170,6 @@ namespace ExcelHell.Prototype
                 var text = title.GetComponent<Text>();
                 if (text != null) text.color = new Color(0.96f, 0.97f, 0.98f, 1f);
             }
-
-            // Kept alive for now because gameplay still owns the value. The next clock step will replace only its presentation.
             if (legacyTurn != null)
             {
                 legacyTurn.SetParent(background, false);
