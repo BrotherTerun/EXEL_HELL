@@ -137,6 +137,18 @@ namespace ExcelHell.Narrative
 
                 if (cell.State == CellState.Destroyed && destroyedCells.Add(address))
                 {
+                    // Player quarantine/delete resets CorruptionAge to zero before completing the action.
+                    // Natural #REF! expiry leaves the terminal age intact, so this remains read-only while
+                    // allowing narrative to distinguish "the anomaly moved" from a deliberate DELETE.
+                    if (corruptedCells.Contains(address) && cell.CorruptionAge > 0)
+                    {
+                        NarrativeSignals.Publish(new NarrativeTrigger(
+                            NarrativeTriggerType.RefDestroyed,
+                            subjectId: address,
+                            row: cell.Row,
+                            column: cell.Column));
+                    }
+
                     NarrativeSignals.Publish(new NarrativeTrigger(
                         NarrativeTriggerType.CellDestroyed,
                         subjectId: address,
