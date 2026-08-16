@@ -11,11 +11,7 @@ namespace ExcelHell.Narrative
         public NarrativeEffectRequest Request { get; }
         public bool IsCompleted { get; private set; }
 
-        public NarrativeEffectTicket(NarrativeEffectRequest request)
-        {
-            Request = request;
-        }
-
+        public NarrativeEffectTicket(NarrativeEffectRequest request) => Request = request;
         public void Complete() => IsCompleted = true;
     }
 
@@ -56,6 +52,11 @@ namespace ExcelHell.Narrative
 
         public IReadOnlyCollection<string> ConsumedEventIds => consumed;
         public int EventCount => events?.Count ?? 0;
+        public int MatchCount { get; private set; }
+        public int DispatchedEffectCount { get; private set; }
+        public int OnceSkipCount { get; private set; }
+        public int MissingReceiverCount { get; private set; }
+        public bool IsIdle => !draining && queue.Count == 0;
 
         private void OnEnable()
         {
@@ -76,6 +77,7 @@ namespace ExcelHell.Narrative
             events = definitions?.Where(definition => definition != null).ToList()
                      ?? new List<NarrativeEventDefinition>();
             consumed.Clear();
+            ResetDiagnostics();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             NarrativeDefinitionValidator.LogIssues(events, this);
@@ -83,6 +85,14 @@ namespace ExcelHell.Narrative
 
             if (verboseLogging)
                 Debug.Log($"[NARRATIVE] Loaded {events.Count} event(s) for level '{levelId}'.");
+        }
+
+        public void ResetDiagnostics()
+        {
+            MatchCount = 0;
+            DispatchedEffectCount = 0;
+            OnceSkipCount = 0;
+            MissingReceiverCount = 0;
         }
 
         public void RegisterReceiver(INarrativeEffectReceiver receiver)
@@ -95,10 +105,8 @@ namespace ExcelHell.Narrative
             if (receiver != null) receivers.Remove(receiver);
         }
 
-        public void FireDebug(NarrativeTriggerType type, int number = 0, string subjectId = null)
-        {
+        public void FireDebug(NarrativeTriggerType type, int number = 0, string subjectId = null) =>
             NarrativeSignals.Publish(new NarrativeTrigger(type, number, subjectId));
-        }
 
         private void DiscoverReceivers()
         {
@@ -115,11 +123,13 @@ namespace ExcelHell.Narrative
                 if (!Matches(definition, trigger)) continue;
                 if (definition.once && !string.IsNullOrWhiteSpace(definition.id) && consumed.Contains(definition.id))
                 {
+                    OnceSkipCount++;
                     if (verboseLogging)
                         Debug.Log($"[NARRATIVE/SKIP] {definition.id} — once event already consumed.");
                     continue;
                 }
 
+                MatchCount++;
                 if (definition.once && !string.IsNullOrWhiteSpace(definition.id)) consumed.Add(definition.id);
                 if (verboseLogging)
                     Debug.Log($"[NARRATIVE/MATCH] {definition.id ?? "<unnamed>"} <- {trigger.Type}");
@@ -169,12 +179,14 @@ namespace ExcelHell.Narrative
                 var receiver = ChooseReceiver(effect.type);
                 if (receiver == null)
                 {
+                    MissingReceiverCount++;
                     if (verboseLogging)
                         Debug.Log($"[NARRATIVE/SKIP] No receiver for {effect.type}; request completed without presentation.");
                     yield return null;
                     continue;
                 }
 
+                DispatchedEffectCount++;
                 var ticket = new NarrativeEffectTicket(request);
                 receiver.Receive(ticket);
                 yield return new WaitUntil(() => ticket.IsCompleted || receiver == null);
@@ -219,8 +231,7 @@ namespace ExcelHell.Narrative
         public void Receive(NarrativeEffectTicket ticket)
         {
             var request = ticket.Request;
-            var effect = request.Effect;
-            Debug.Log($"[NARRATIVE/RECEIVER] {effect.type} accepted from {request.EventId ?? "<unnamed>"}.");
+            Debug.Log($"[NARRATIVE/RECEIVER] {request.Effect.type} accepted from {request.EventId ?? "<unnamed>"}.");
             ticket.Complete();
         }
     }
