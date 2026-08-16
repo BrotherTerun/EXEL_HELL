@@ -124,8 +124,11 @@ namespace ExcelHell.Narrative
             {
                 case NarrativeEffectType.CellMessage:
                     RequireText(result, eventId, effect, effectIndex);
-                    if (effect.row < 0 || effect.column < 0)
-                        Error(result, eventId, "CellMessage requires row and column >= 0.", effectIndex);
+                    var autoPlacement = effect.row == -1 && effect.column == -1;
+                    var explicitPlacement = effect.row >= 0 && effect.column >= 0;
+                    if (!autoPlacement && !explicitPlacement)
+                        Error(result, eventId,
+                            "CellMessage must use either explicit row/column >= 0 or (-1,-1) auto placement.", effectIndex);
                     ValidateLifetime(result, eventId, effect, effectIndex);
                     break;
 
@@ -136,7 +139,10 @@ namespace ExcelHell.Narrative
 
                 case NarrativeEffectType.BossChatMessage:
                 case NarrativeEffectType.DepartmentChatMessage:
+                case NarrativeEffectType.SystemStatus:
                     RequireText(result, eventId, effect, effectIndex);
+                    if (effect.type == NarrativeEffectType.SystemStatus)
+                        ValidateLifetime(result, eventId, effect, effectIndex);
                     break;
 
                 case NarrativeEffectType.Toast:
