@@ -97,7 +97,7 @@ namespace ExcelHell.Narrative
 
         public void RegisterReceiver(INarrativeEffectReceiver receiver)
         {
-            if (receiver != null && !receivers.Contains(receiver)) receivers.Add(receiver);
+            if (ReceiverAlive(receiver) && !receivers.Contains(receiver)) receivers.Add(receiver);
         }
 
         public void UnregisterReceiver(INarrativeEffectReceiver receiver)
@@ -177,7 +177,7 @@ namespace ExcelHell.Narrative
                 }
 
                 var receiver = ChooseReceiver(effect.type);
-                if (receiver == null)
+                if (!ReceiverAlive(receiver))
                 {
                     MissingReceiverCount++;
                     if (verboseLogging)
@@ -189,7 +189,7 @@ namespace ExcelHell.Narrative
                 DispatchedEffectCount++;
                 var ticket = new NarrativeEffectTicket(request);
                 receiver.Receive(ticket);
-                yield return new WaitUntil(() => ticket.IsCompleted || receiver == null);
+                yield return new WaitUntil(() => ticket.IsCompleted || !ReceiverAlive(receiver));
             }
             draining = false;
         }
@@ -201,7 +201,7 @@ namespace ExcelHell.Narrative
             for (var i = receivers.Count - 1; i >= 0; i--)
             {
                 var receiver = receivers[i];
-                if (receiver == null)
+                if (!ReceiverAlive(receiver))
                 {
                     receivers.RemoveAt(i);
                     continue;
@@ -218,6 +218,12 @@ namespace ExcelHell.Narrative
             }
 
             return fallback;
+        }
+
+        private static bool ReceiverAlive(INarrativeEffectReceiver receiver)
+        {
+            if (receiver == null) return false;
+            return receiver is not UnityEngine.Object unityObject || unityObject != null;
         }
     }
 
