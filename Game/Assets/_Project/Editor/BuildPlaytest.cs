@@ -21,7 +21,12 @@ namespace ExcelHell.EditorTools
             {
                 var options = new BuildPlayerOptions
                 {
-                    scenes = new[] { "Assets/Scenes/SampleScene.unity" },
+                    scenes = new[]
+                    {
+                        "Assets/Scenes/Menu.unity",
+                        "Assets/Scenes/Gameplay.unity",
+                        "Assets/Scenes/LevelConstructor.unity"
+                    },
                     locationPathName = outputPath,
                     target = BuildTarget.StandaloneWindows64,
                     options = BuildOptions.None
@@ -29,9 +34,9 @@ namespace ExcelHell.EditorTools
 
                 var report = BuildPipeline.BuildPlayer(options);
                 if (report.summary.result == BuildResult.Succeeded)
-                    Debug.Log($"EXCEL HELL playtest build ready: {outputPath}");
+                    Debug.Log($"EXEL HELL playtest build ready: {outputPath}");
                 else
-                    Debug.LogError($"EXCEL HELL playtest build failed: {report.summary.result}");
+                    Debug.LogError($"EXEL HELL playtest build failed: {report.summary.result}");
             }
             finally
             {
