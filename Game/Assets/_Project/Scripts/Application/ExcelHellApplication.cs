@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace ExcelHell.Application
@@ -95,6 +96,7 @@ namespace ExcelHell.Application
 
             instance = this;
             DontDestroyOnLoad(gameObject);
+            SceneManager.sceneLoaded += OnSceneLoaded;
             GameplayActive = false;
             Paused = false;
             EnsureEventSystem();
@@ -102,7 +104,7 @@ namespace ExcelHell.Application
             BuildUi();
             AppSettingsService.LoadAndApply();
             RefreshLocalizedText();
-            ShowMainMenu();
+            DisplayMainMenu();
         }
 
         private void Update()
@@ -136,8 +138,25 @@ namespace ExcelHell.Application
 
         private void OnDestroy()
         {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
             PersistSettingsDraft();
             if (instance == this) instance = null;
+        }
+
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (scene.name == "Menu" && !GameplayActive)
+            {
+                DisplayMainMenu();
+                return;
+            }
+
+            if (scene.name == "Gameplay" && GameplayActive)
+            {
+                HideAllScreens();
+                currentScreen = null;
+                screenHistory.Clear();
+            }
         }
 
         public static bool CanPrototypeBootstrap() => instance == null || GameplayActive;
@@ -183,6 +202,21 @@ namespace ExcelHell.Application
             editingSettings = null;
             DestroyPrototypeIfPresent();
             HideAllScreens();
+            currentScreen = null;
+            screenHistory.Clear();
+
+            if (SceneManager.GetActiveScene().name != "Menu" && UnityEngine.Application.CanStreamedLevelBeLoaded("Menu"))
+            {
+                SceneManager.LoadScene("Menu");
+                return;
+            }
+
+            DisplayMainMenu();
+        }
+
+        private void DisplayMainMenu()
+        {
+            HideAllScreens();
             mainScreen.SetActive(true);
             mainScreen.transform.SetAsLastSibling();
             currentScreen = mainScreen;
@@ -217,8 +251,11 @@ namespace ExcelHell.Application
             currentScreen = null;
             screenHistory.Clear();
             PrototypeLevelRuntime.SetCurrentIndex(levelIndex);
+
+            // NEW GAME / CONTINUE / LOAD only select the level here. The worksheet is owned
+            // exclusively by Gameplay.unity and is created there by the scene architecture.
             DestroyPrototypeIfPresent();
-            new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
+            SceneManager.LoadScene("Gameplay");
         }
 
         private void SetPaused(bool paused)
@@ -258,8 +295,7 @@ namespace ExcelHell.Application
             HideAllScreens();
             currentScreen = null;
             screenHistory.Clear();
-            DestroyPrototypeIfPresent();
-            new GameObject("EXEL HELL Prototype").AddComponent<ExcelHellPrototype>();
+            SceneManager.LoadScene("Gameplay");
         }
 
         private void OpenLoadScreen()
