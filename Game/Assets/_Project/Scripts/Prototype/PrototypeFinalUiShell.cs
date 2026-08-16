@@ -12,15 +12,15 @@ namespace ExcelHell.Prototype
 
         private const float AppX = 24f;
         private const float AppY = -20f;
-        private const float AppWidth = 1120f;
+        private const float AppWidth = 1220f;
         private const float AppHeight = 856f;
 
         private const float WorksheetX = 40f;
         private const float WorksheetY = -132f;
-        private const float WorksheetWidth = 1088f;
+        private const float WorksheetWidth = 1188f;
         private const float WorksheetHeight = 720f;
         private const float FormulaY = -90f;
-        private const float FormulaWidth = 1024f;
+        private const float FormulaWidth = 1124f;
         private const float FormulaHeight = 34f;
 
         private ExcelHellPrototype prototype;
@@ -102,7 +102,7 @@ namespace ExcelHell.Prototype
             ApplyWorksheetGeometry();
             HideLegacyChrome();
             applied = true;
-            Debug.Log("[UI-SHELL] Visual shell v1.1 applied: narrower worksheet, expanded office stage, grounded protagonist slot.");
+            Debug.Log("[UI-SHELL] Visual shell v1.2 applied: full worksheet scale, office clock anchor and expanded protagonist stage.");
         }
 
         private void ApplyBackground()
@@ -135,24 +135,36 @@ namespace ExcelHell.Prototype
 
             CreateReservedButton(app.transform, "Tasks Reserved", "ЗАДАЧИ", 16f, -8f, 128f, 40f);
             CreateReservedButton(app.transform, "Help Reserved", "?", 152f, -8f, 44f, 40f);
-            CreateReservedButton(app.transform, "Clock Reserved", "09:00", 738f, -8f, 128f, 40f);
-            CreateReservedButton(app.transform, "Chat Reserved", "✉", 874f, -8f, 56f, 40f);
-            CreateReservedButton(app.transform, "Menu Reserved", "МЕНЮ", 938f, -8f, 166f, 40f);
+            CreateReservedButton(app.transform, "Chat Reserved", "✉", 974f, -8f, 56f, 40f);
+            CreateReservedButton(app.transform, "Menu Reserved", "МЕНЮ", 1038f, -8f, 166f, 40f);
+
+            // Production HUD still expects a Clock Reserved binding point. Keep a zero-size compatibility
+            // anchor while the visible clock is rendered directly over the office wall display.
+            var clockBinding = new GameObject("Clock Reserved", typeof(RectTransform));
+            clockBinding.transform.SetParent(app.transform, false);
+            SetTopLeft(clockBinding.GetComponent<RectTransform>(), 0f, 0f, 0f, 0f);
 
             var formulaRow = CreatePanel(app.transform, "Formula Row Surface", PrototypeVisualTheme.SheetSoft);
             SetTopLeft(formulaRow.rectTransform, 16f, -70f, WorksheetWidth, FormulaHeight);
-            CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1040f, -70f, 64f, FormulaHeight);
+            CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1140f, -70f, 64f, FormulaHeight);
 
             var worksheetSurface = CreatePanel(app.transform, "Worksheet Surface", PrototypeVisualTheme.Sheet);
             SetTopLeft(worksheetSurface.rectTransform, 16f, -112f, WorksheetWidth, WorksheetHeight);
 
             var officeZone = new GameObject("Office Scene Reserved", typeof(RectTransform));
             officeZone.transform.SetParent(chromeRoot.transform, false);
-            SetTopLeft(officeZone.GetComponent<RectTransform>(), 1160f, -56f, 420f, 800f);
+            SetNormalizedRegion(officeZone.GetComponent<RectTransform>(), 0.66f, 0.03f, 0.97f, 0.88f);
+
+            var officeClock = new GameObject("Office Clock Display", typeof(RectTransform));
+            officeClock.transform.SetParent(chromeRoot.transform, false);
+            // Matches the dark digital wall display in the 1672x941 office master image.
+            SetNormalizedRegion(officeClock.GetComponent<RectTransform>(), 0.714f, 0.734f, 0.861f, 0.823f);
 
             var avatar = new GameObject("Avatar Reserved", typeof(RectTransform));
             avatar.transform.SetParent(chromeRoot.transform, false);
-            SetTopLeft(avatar.GetComponent<RectTransform>(), 1148f, -560f, 420f, 294f);
+            // Matches the lower-right workstation region; normalized anchors keep it attached to the art
+            // when the Game view is wider than the 1600x900 safe frame.
+            SetNormalizedRegion(avatar.GetComponent<RectTransform>(), 0.67f, 0.04f, 0.94f, 0.46f);
         }
 
         private void BuildOfficeBackdrop()
@@ -274,6 +286,16 @@ namespace ExcelHell.Prototype
             rect.pivot = new Vector2(0f, 1f);
             rect.anchoredPosition = new Vector2(x, y);
             rect.sizeDelta = new Vector2(width, height);
+            rect.localScale = Vector3.one;
+        }
+
+        private static void SetNormalizedRegion(RectTransform rect, float minX, float minY, float maxX, float maxY)
+        {
+            rect.anchorMin = new Vector2(minX, minY);
+            rect.anchorMax = new Vector2(maxX, maxY);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = Vector2.zero;
             rect.localScale = Vector3.one;
         }
 
