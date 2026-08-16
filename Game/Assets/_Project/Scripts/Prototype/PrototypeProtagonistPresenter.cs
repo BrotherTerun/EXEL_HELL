@@ -23,6 +23,8 @@ namespace ExcelHell.Prototype
         private Button bubbleButton;
         private NarrativeEffectTicket activeTicket;
         private Coroutine timeoutRoutine;
+        private bool activeShown;
+        private bool pendingLogged;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -40,6 +42,7 @@ namespace ExcelHell.Prototype
             if (current != prototype) Bind(current);
             BindRunner();
             if (prototype != null && bubble == null) TryBuild();
+            if (activeTicket != null && !activeShown) TryShowActive();
         }
 
         private void Bind(ExcelHellPrototype owner)
@@ -103,22 +106,31 @@ namespace ExcelHell.Prototype
             if (ticket == null) return;
 
             CompleteActive("replaced");
-            if (bubble == null) TryBuild();
-            if (bubble == null || bubbleText == null)
-            {
-                Debug.LogWarning($"[PROTAGONIST/UI] Presenter unavailable for event={ticket.Request.EventId}; completing without rendering.");
-                ticket.Complete();
-                return;
-            }
-
             activeTicket = ticket;
-            var effect = ticket.Request.Effect;
+            activeShown = false;
+            pendingLogged = false;
+
+            if (!TryShowActive())
+            {
+                pendingLogged = true;
+                Debug.Log($"[PROTAGONIST/UI] Pending event={ticket.Request.EventId}; waiting for Avatar Reserved.");
+            }
+        }
+
+        private bool TryShowActive()
+        {
+            if (activeTicket == null) return false;
+            if (bubble == null) TryBuild();
+            if (bubble == null || bubbleText == null) return false;
+
+            var effect = activeTicket.Request.Effect;
             bubbleText.text = effect.text ?? string.Empty;
             SetMood(effect.mood);
             bubble.SetActive(true);
             bubble.transform.SetAsLastSibling();
+            activeShown = true;
 
-            Debug.Log($"[PROTAGONIST/UI] Show event={ticket.Request.EventId} mood={effect.mood} " +
+            Debug.Log($"[PROTAGONIST/UI] Show event={activeTicket.Request.EventId} mood={effect.mood} " +
                       $"dismiss={effect.lifetime.dismissMode} duration={effect.lifetime.duration:0.##} text=\"{effect.text}\"");
 
             if (effect.lifetime.dismissMode == NarrativeDismissMode.Timed ||
@@ -126,6 +138,7 @@ namespace ExcelHell.Prototype
             {
                 timeoutRoutine = StartCoroutine(DismissAfter(Mathf.Max(0.05f, effect.lifetime.duration)));
             }
+            return true;
         }
 
         private void SetMood(ProtagonistMood mood)
@@ -170,6 +183,8 @@ namespace ExcelHell.Prototype
                 activeTicket = null;
                 Debug.Log($"[PROTAGONIST/UI] Hide event={eventId} reason={reason}.");
             }
+            activeShown = false;
+            pendingLogged = false;
         }
 
         private void DestroyBubble()
@@ -178,6 +193,7 @@ namespace ExcelHell.Prototype
             bubble = null;
             bubbleText = null;
             bubbleButton = null;
+            activeShown = false;
         }
 
         private void OnDisable()
