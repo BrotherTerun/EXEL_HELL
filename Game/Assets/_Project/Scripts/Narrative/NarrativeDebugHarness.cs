@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using ExcelHell.Prototype;
 using UnityEngine;
 
 namespace ExcelHell.Narrative
@@ -26,6 +27,10 @@ namespace ExcelHell.Narrative
 
         private IEnumerator RunSmokeTestAfterStartup()
         {
+            // NarrativeLayer is persistent and may bootstrap in Menu. The visual smoke belongs to Gameplay only.
+            while (FindFirstObjectByType<ExcelHellPrototype>() == null || PrototypeAuthoringMode.Active)
+                yield return null;
+
             yield return new WaitForSecondsRealtime(0.25f);
             yield return RunSmokeTestRoutine();
         }
