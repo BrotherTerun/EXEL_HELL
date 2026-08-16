@@ -6,9 +6,23 @@ using UnityEngine;
 
 namespace ExcelHell.Narrative
 {
+    public sealed class NarrativeEffectTicket
+    {
+        public NarrativeEffectRequest Request { get; }
+        public bool IsCompleted { get; private set; }
+
+        public NarrativeEffectTicket(NarrativeEffectRequest request)
+        {
+            Request = request;
+        }
+
+        public void Complete() => IsCompleted = true;
+    }
+
     public interface INarrativeEffectReceiver
     {
-        void Receive(NarrativeEffectRequest request);
+        bool CanReceive(NarrativeEffectType type);
+        void Receive(NarrativeEffectTicket ticket);
     }
 
     public static class NarrativeSignals
@@ -41,6 +55,7 @@ namespace ExcelHell.Narrative
         }
 
         public IReadOnlyCollection<string> ConsumedEventIds => consumed;
+        public int EventCount => events?.Count ?? 0;
 
         private void OnEnable()
         {
@@ -135,27 +150,37 @@ namespace ExcelHell.Narrative
             while (queue.Count > 0)
             {
                 var request = queue.Dequeue();
+                var effect = request.Effect;
                 if (verboseLogging)
                 {
-                    var effect = request.Effect;
                     Debug.Log(
                         $"[NARRATIVE/EFFECT] event={request.EventId ?? "<unnamed>"} type={effect.type} " +
                         $"text=\"{effect.text}\" mood={effect.mood} dismiss={effect.lifetime.dismissMode} " +
                         $"duration={effect.lifetime.duration:0.##} cell=({effect.row},{effect.column}) value={effect.intValue}");
                 }
 
+                INarrativeEffectReceiver receiver = null;
                 for (var i = receivers.Count - 1; i >= 0; i--)
                 {
-                    var receiver = receivers[i];
-                    if (receiver == null)
+                    if (receivers[i] == null)
                     {
                         receivers.RemoveAt(i);
                         continue;
                     }
-                    receiver.Receive(request);
+                    if (receiver == null && receivers[i].CanReceive(effect.type)) receiver = receivers[i];
                 }
 
-                yield return null;
+                if (receiver == null)
+                {
+                    if (verboseLogging)
+                        Debug.Log($"[NARRATIVE/SKIP] No receiver for {effect.type}; request completed without presentation.");
+                    yield return null;
+                    continue;
+                }
+
+                var ticket = new NarrativeEffectTicket(request);
+                receiver.Receive(ticket);
+                yield return new WaitUntil(() => ticket.IsCompleted || receiver == null);
             }
             draining = false;
         }
@@ -163,10 +188,14 @@ namespace ExcelHell.Narrative
 
     public sealed class DebugNarrativeReceiver : MonoBehaviour, INarrativeEffectReceiver
     {
-        public void Receive(NarrativeEffectRequest request)
+        public bool CanReceive(NarrativeEffectType type) => true;
+
+        public void Receive(NarrativeEffectTicket ticket)
         {
+            var request = ticket.Request;
             var effect = request.Effect;
             Debug.Log($"[NARRATIVE/RECEIVER] {effect.type} accepted from {request.EventId ?? "<unnamed>"}.");
+            ticket.Complete();
         }
     }
 }
