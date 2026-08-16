@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using ExcelHell.Application;
 using ExcelHell.Narrative;
 using UnityEngine;
@@ -14,7 +15,7 @@ namespace ExcelHell.Prototype
     /// Production presentation for the compact gameplay shell. The legacy sidebar remains hidden and
     /// continues owning battle-tested callbacks; this HUD mirrors its data and forwards explicit clicks.
     /// </summary>
-    [DefaultExecutionOrder(1900)]
+    [DefaultExecutionOrder(1160)]
     public sealed class PrototypeProductionHud : MonoBehaviour, INarrativeEffectReceiver
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -22,8 +23,13 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo GoalsTextField = typeof(ExcelHellPrototype).GetField("goalsText", Flags);
         private static readonly FieldInfo HelpTextField = typeof(ExcelHellPrototype).GetField("helpText", Flags);
 
-        private readonly List<string> bossMessages = new();
-        private readonly List<string> departmentMessages = new();
+        private static readonly string[] DepartmentNamesRu =
+            { "Ирина", "Макс", "Лена", "Антон", "Вика", "Денис", "Катя", "Саша" };
+        private static readonly string[] DepartmentNamesEn =
+            { "Ira", "Max", "Lena", "Anton", "Vika", "Denis", "Katya", "Sasha" };
+
+        private readonly List<ChatEntry> bossMessages = new();
+        private readonly List<ChatEntry> departmentMessages = new();
 
         private ExcelHellPrototype prototype;
         private NarrativeEventRunner runner;
@@ -61,6 +67,7 @@ namespace ExcelHell.Prototype
         private GameObject chatWindow;
         private Text chatHeader;
         private Text chatBody;
+        private ScrollRect chatScroll;
         private Button bossTab;
         private Button departmentTab;
         private Text bossTabText;
@@ -97,9 +104,12 @@ namespace ExcelHell.Prototype
         {
             var current = FindFirstObjectByType<ExcelHellPrototype>();
             if (current != prototype) Bind(current);
+
+            // Register before NarrativeGameplayProbe (1190) publishes LevelStart. The HUD may not have
+            // visual anchors yet, but it can safely retain chat messages until the shell is built.
+            BindNarrativeRunner();
             if (!bound) TryBuild();
 
-            BindNarrativeRunner();
             RefreshClock();
             RefreshMirroredContent();
             RefreshLocalizedLabels();
@@ -118,15 +128,31 @@ namespace ExcelHell.Prototype
             goalsSource = helpSource = null;
             legacySubmitButton = legacyDeleteButton = null;
             bound = false;
-            bossMessages.Clear();
-            departmentMessages.Clear();
             bossUnread = 0;
             departmentUnread = 0;
             activeChannel = ChatChannel.Boss;
             DestroyOwnedUi();
 
-            if (prototype != null)
-                canvas = prototype.GetComponentsInChildren<Canvas>(true).FirstOrDefault();
+            if (prototype == null) return;
+
+            canvas = prototype.GetComponentsInChildren<Canvas>(true).FirstOrDefault();
+            PrepareHistoryForLevel(PrototypeLevelRuntime.Current?.Id ?? "runtime");
+        }
+
+        private void PrepareHistoryForLevel(string levelId)
+        {
+            var day = DayNumber(levelId);
+            if (day <= 1)
+            {
+                bossMessages.Clear();
+                departmentMessages.Clear();
+                return;
+            }
+
+            // Restarting the current level should rebuild that day's conversation instead of duplicating it,
+            // while previous workdays remain available in history.
+            bossMessages.RemoveAll(entry => string.Equals(entry.LevelId, levelId, StringComparison.OrdinalIgnoreCase));
+            departmentMessages.RemoveAll(entry => string.Equals(entry.LevelId, levelId, StringComparison.OrdinalIgnoreCase));
         }
 
         private void TryBuild()
@@ -147,7 +173,8 @@ namespace ExcelHell.Prototype
             legacySubmitButton = FindLegacyButton("ui.submit");
             legacyDeleteButton = FindLegacyButton("ui.delete");
 
-            SetupReservedButton(tasksReserved, ToggleTasks, out tasksButtonText);
+            // Tasks now arrive diegetically from the boss. The old top-left slot is the real submit action.
+            SetupReservedButton(tasksReserved, SubmitReport, out tasksButtonText);
             SetupReservedButton(helpReserved, ToggleHelp, out helpButtonText);
             SetupReservedButton(chatReserved, ToggleChat, out chatButtonText);
             SetupReservedButton(menuReserved, ExcelHellApplication.OpenGameplayMenu, out menuButtonText);
@@ -159,14 +186,15 @@ namespace ExcelHell.Prototype
             clockText.color = new Color(0.75f, 0.93f, 0.83f, 1f);
 
             BuildChatBadge();
-            BuildTasksWindow();
             BuildHelpWindow();
             BuildChatWindow();
             BuildToast();
             BuildCompletionModal();
             bound = true;
 
-            Debug.Log("[UI-HUD] Compact topbar, task/help drawers, chat and completion presentation bound.");
+            RefreshChatButton();
+            RefreshChatWindow();
+            Debug.Log("[UI-HUD] Submit-first topbar, persistent dated chat, help and completion presentation bound.");
         }
 
         private void SetupReservedButton(RectTransform rect, Action callback, out Text label)
@@ -198,18 +226,16 @@ namespace ExcelHell.Prototype
 
         private void BuildTasksWindow()
         {
+            // Kept for compatibility with old code paths; production no longer exposes this drawer.
             tasksWindow = CreateWindow("Tasks Window", 40f, -82f, 570f, 330f);
             tasksHeader = CreateText(tasksWindow.transform, string.Empty, 19, FontStyle.Bold, TextAnchor.MiddleLeft);
             SetTopLeft(tasksHeader.rectTransform, 18f, -12f, 430f, 34f);
-
             var close = CreateButton(tasksWindow.transform, "×", 500f, -10f, 48f, 38f, CloseTasks);
             close.GetComponentInChildren<Text>().fontSize = 22;
-
             tasksBody = CreateText(tasksWindow.transform, string.Empty, 16, FontStyle.Normal, TextAnchor.UpperLeft);
             SetTopLeft(tasksBody.rectTransform, 18f, -60f, 534f, 190f);
             tasksBody.color = new Color(0.92f, 0.93f, 0.95f, 1f);
             tasksBody.verticalOverflow = VerticalWrapMode.Truncate;
-
             var submit = CreateButton(tasksWindow.transform, string.Empty, 18f, -270f, 534f, 44f, SubmitReport);
             submitLabel = submit.GetComponentInChildren<Text>();
             tasksWindow.SetActive(false);
@@ -245,15 +271,29 @@ namespace ExcelHell.Prototype
             departmentTab = CreateButton(chatWindow.transform, string.Empty, 256f, -60f, 246f, 44f, () => SelectChannel(ChatChannel.Department));
             departmentTabText = departmentTab.GetComponentInChildren<Text>();
 
-            var bodyPanel = new GameObject("Chat Body", typeof(RectTransform), typeof(Image));
+            var bodyPanel = new GameObject("Chat Body", typeof(RectTransform), typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
             bodyPanel.transform.SetParent(chatWindow.transform, false);
             SetTopLeft(bodyPanel.GetComponent<RectTransform>(), 18f, -116f, 484f, 480f);
             bodyPanel.GetComponent<Image>().color = new Color(0.15f, 0.17f, 0.20f, 1f);
 
             chatBody = CreateText(bodyPanel.transform, string.Empty, 16, FontStyle.Normal, TextAnchor.UpperLeft);
-            Stretch(chatBody.rectTransform, 16f);
+            var bodyRect = chatBody.rectTransform;
+            bodyRect.anchorMin = new Vector2(0f, 1f);
+            bodyRect.anchorMax = new Vector2(1f, 1f);
+            bodyRect.pivot = new Vector2(0.5f, 1f);
+            bodyRect.anchoredPosition = new Vector2(0f, -14f);
+            bodyRect.sizeDelta = new Vector2(-28f, 452f);
             chatBody.color = new Color(0.91f, 0.925f, 0.945f, 1f);
-            chatBody.verticalOverflow = VerticalWrapMode.Truncate;
+            chatBody.verticalOverflow = VerticalWrapMode.Overflow;
+            chatBody.raycastTarget = false;
+
+            chatScroll = bodyPanel.GetComponent<ScrollRect>();
+            chatScroll.viewport = bodyPanel.GetComponent<RectTransform>();
+            chatScroll.content = bodyRect;
+            chatScroll.horizontal = false;
+            chatScroll.vertical = true;
+            chatScroll.movementType = ScrollRect.MovementType.Clamped;
+            chatScroll.scrollSensitivity = 28f;
 
             chatWindow.SetActive(false);
             RefreshChatWindow();
@@ -306,13 +346,17 @@ namespace ExcelHell.Prototype
         private void RefreshClock()
         {
             if (!bound || clockText == null || prototype == null) return;
-            if (TurnField?.GetValue(prototype) is not int turn) return;
+            clockText.text = CurrentWorkTime();
+        }
 
+        private string CurrentWorkTime()
+        {
+            var turn = TurnField?.GetValue(prototype) is int currentTurn ? currentTurn : 0;
             var maxTurns = Mathf.Max(1, PrototypeLevelRuntime.Current?.MaxTurns ?? 1);
             var clampedTurn = Mathf.Clamp(turn, 0, maxTurns);
             var minutes = Mathf.RoundToInt(540f * clampedTurn / maxTurns);
             var total = 9 * 60 + minutes;
-            clockText.text = $"{total / 60:00}:{total % 60:00}";
+            return $"{total / 60:00}:{total % 60:00}";
         }
 
         private void RefreshMirroredContent()
@@ -325,7 +369,7 @@ namespace ExcelHell.Prototype
         private void RefreshLocalizedLabels()
         {
             if (!bound) return;
-            if (tasksButtonText != null) tasksButtonText.text = IsRussian ? "ЗАДАЧИ" : "TASKS";
+            if (tasksButtonText != null) tasksButtonText.text = IsRussian ? "ОТПРАВИТЬ ОТЧЁТ" : "SUBMIT REPORT";
             if (helpButtonText != null) helpButtonText.text = "?";
             if (chatButtonText != null) chatButtonText.text = "✉";
             if (menuButtonText != null) menuButtonText.text = IsRussian ? "МЕНЮ" : "MENU";
@@ -423,11 +467,11 @@ namespace ExcelHell.Prototype
             switch (effect.type)
             {
                 case NarrativeEffectType.BossChatMessage:
-                    ReceiveChat(ChatChannel.Boss, effect.text);
+                    ReceiveChat(ChatChannel.Boss, effect.text, ticket.Request.EventId);
                     ticket.Complete();
                     break;
                 case NarrativeEffectType.DepartmentChatMessage:
-                    ReceiveChat(ChatChannel.Department, effect.text);
+                    ReceiveChat(ChatChannel.Department, effect.text, ticket.Request.EventId);
                     ticket.Complete();
                     break;
                 case NarrativeEffectType.Toast:
@@ -440,11 +484,24 @@ namespace ExcelHell.Prototype
             }
         }
 
-        private void ReceiveChat(ChatChannel channel, string message)
+        private void ReceiveChat(ChatChannel channel, string message, string eventId)
         {
             if (string.IsNullOrWhiteSpace(message)) return;
+
+            var levelId = PrototypeLevelRuntime.Current?.Id ?? "runtime";
             var target = channel == ChatChannel.Boss ? bossMessages : departmentMessages;
-            target.Add(message.Trim());
+            var sender = channel == ChatChannel.Boss
+                ? (IsRussian ? "НАЧАЛЬНИК" : "BOSS")
+                : PickDepartmentSender(levelId, eventId, message, target);
+            var entry = new ChatEntry
+            {
+                LevelId = levelId,
+                Day = DayNumber(levelId),
+                Time = CurrentWorkTime(),
+                Sender = sender,
+                Message = message.Trim()
+            };
+            target.Add(entry);
 
             var readingNow = chatWindow != null && chatWindow.activeSelf && activeChannel == channel;
             if (!readingNow)
@@ -453,10 +510,19 @@ namespace ExcelHell.Prototype
                 else departmentUnread++;
             }
 
-            var prefix = channel == ChatChannel.Boss ? (IsRussian ? "НАЧАЛЬНИК" : "BOSS") : (IsRussian ? "ОТДЕЛ" : "DEPARTMENT");
-            ShowToast($"{prefix}: {message}", 3f, () => OpenChat(channel));
+            ShowToast($"{entry.Time}  {entry.Sender}: {entry.Message}", 3f, () => OpenChat(channel));
             RefreshChatButton();
             RefreshChatWindow();
+        }
+
+        private string PickDepartmentSender(string levelId, string eventId, string message, List<ChatEntry> target)
+        {
+            var names = IsRussian ? DepartmentNamesRu : DepartmentNamesEn;
+            var seed = StableHash($"{levelId}:{eventId}:{message}");
+            var index = (int)(seed % (uint)names.Length);
+            if (target.Count > 0 && target[target.Count - 1].Sender == names[index])
+                index = (index + 1) % names.Length;
+            return names[index];
         }
 
         private void ToggleChat()
@@ -474,7 +540,7 @@ namespace ExcelHell.Prototype
             chatWindow.SetActive(true);
             MarkCurrentRead();
             RefreshChatButton();
-            RefreshChatWindow();
+            RefreshChatWindow(true);
         }
 
         private void CloseChat()
@@ -488,7 +554,7 @@ namespace ExcelHell.Prototype
             activeChannel = channel;
             MarkCurrentRead();
             RefreshChatButton();
-            RefreshChatWindow();
+            RefreshChatWindow(true);
         }
 
         private void MarkCurrentRead()
@@ -505,7 +571,7 @@ namespace ExcelHell.Prototype
             if (chatBadgeText != null) chatBadgeText.text = unread > 9 ? "9+" : unread.ToString();
         }
 
-        private void RefreshChatWindow()
+        private void RefreshChatWindow(bool snapToBottom = false)
         {
             if (chatWindow == null) return;
             if (bossTabText != null)
@@ -527,8 +593,41 @@ namespace ExcelHell.Prototype
             if (chatBody == null) return;
             var source = activeChannel == ChatChannel.Boss ? bossMessages : departmentMessages;
             chatBody.text = source.Count == 0
-                ? (IsRussian ? "Нет новых сообщений." : "No new messages.")
-                : string.Join("\n\n", source.Select(message => $"› {message}"));
+                ? (IsRussian ? "Нет сообщений." : "No messages.")
+                : FormatHistory(source);
+
+            var rect = chatBody.rectTransform;
+            var requiredHeight = Mathf.Max(452f, chatBody.preferredHeight + 28f);
+            rect.sizeDelta = new Vector2(-28f, requiredHeight);
+            if (chatScroll != null && (snapToBottom || chatWindow.activeSelf))
+                chatScroll.verticalNormalizedPosition = 0f;
+        }
+
+        private string FormatHistory(List<ChatEntry> entries)
+        {
+            var builder = new StringBuilder();
+            string lastLevel = null;
+            foreach (var entry in entries)
+            {
+                if (!string.Equals(lastLevel, entry.LevelId, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (builder.Length > 0) builder.Append("\n\n");
+                    builder.Append(IsRussian ? $"────  ДЕНЬ {entry.Day}  ────" : $"────  DAY {entry.Day}  ────");
+                    builder.Append("\n\n");
+                    lastLevel = entry.LevelId;
+                }
+
+                builder.Append(entry.Time).Append("  ").Append(entry.Sender).Append('\n');
+                builder.Append(entry.Message).Append("\n\n");
+            }
+            return builder.ToString().TrimEnd();
+        }
+
+        private static int DayNumber(string levelId)
+        {
+            if (!string.IsNullOrEmpty(levelId) && levelId.Length >= 2 && int.TryParse(levelId.Substring(0, 2), out var day))
+                return Mathf.Max(1, day);
+            return 1;
         }
 
         private void ShowToast(string message, float duration, Action onClick = null)
@@ -572,9 +671,24 @@ namespace ExcelHell.Prototype
             if (toastRoot != null) Destroy(toastRoot);
             if (completionModal != null) Destroy(completionModal);
             tasksWindow = helpWindow = chatWindow = toastRoot = completionModal = null;
+            chatScroll = null;
             chatBadge = null;
             if (toastRoutine != null) StopCoroutine(toastRoutine);
             toastRoutine = null;
+        }
+
+        private static uint StableHash(string value)
+        {
+            unchecked
+            {
+                uint hash = 2166136261;
+                foreach (var c in value ?? string.Empty)
+                {
+                    hash ^= c;
+                    hash *= 16777619;
+                }
+                return hash;
+            }
         }
 
         private static RectTransform FindRect(Transform root, string objectName)
@@ -641,6 +755,15 @@ namespace ExcelHell.Prototype
             rect.offsetMin = new Vector2(padding, padding);
             rect.offsetMax = new Vector2(-padding, -padding);
             rect.localScale = Vector3.one;
+        }
+
+        private sealed class ChatEntry
+        {
+            public string LevelId;
+            public int Day;
+            public string Time;
+            public string Sender;
+            public string Message;
         }
 
         private enum ChatChannel
