@@ -4,15 +4,23 @@ using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace ExcelHell.Prototype
 {
+    /// <summary>
+    /// Formula Cells 2.0 interaction layer.
+    /// Drag = MOVE, Shift+Drag = SELECT. Filled formulas expose their occupant first;
+    /// empty Formula properties are themselves movable. Formula activation happens only by DROP.
+    /// </summary>
     [DefaultExecutionOrder(1100)]
     public sealed class PrototypeFormulaCells : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        private const float DragThresholdPixels = 7f;
         private static readonly Color FormulaTextColor = new(0.03f, 0.30f, 0.86f, 1f);
+        private static readonly Color FormulaBackgroundColor = new(0.88f, 0.92f, 0.97f, 1f);
 
         private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
         private static readonly FieldInfo ViewsField = typeof(ExcelHellPrototype).GetField("views", Flags);
@@ -22,27 +30,47 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo AggregateCounterField = typeof(ExcelHellPrototype).GetField("aggregateCounter", Flags);
         private static readonly FieldInfo StatusTextField = typeof(ExcelHellPrototype).GetField("statusText", Flags);
         private static readonly FieldInfo LocalizationField = typeof(ExcelHellPrototype).GetField("loc", Flags);
+        private static readonly FieldInfo ClipboardTextField = typeof(ExcelHellPrototype).GetField("clipboardTextUi", Flags);
         private static readonly MethodInfo CanActMethod = typeof(ExcelHellPrototype).GetMethod("CanAct", Flags);
         private static readonly MethodInfo CompletePlayerActionMethod = typeof(ExcelHellPrototype).GetMethod("CompletePlayerAction", Flags);
         private static readonly MethodInfo RefreshAllMethod = typeof(ExcelHellPrototype).GetMethod("RefreshAll", Flags);
         private static readonly MethodInfo LegacyDeleteMethod = typeof(ExcelHellPrototype).GetMethod("OnDelete", Flags);
 
         private readonly Dictionary<CellModel, FormulaCellOverlay> overlays = new();
+        private readonly List<TokenPayload> dragTokens = new();
+        private readonly List<CellModel> dragSelectionCells = new();
+
         private ExcelHellPrototype prototype;
         private CellModel[,] cells;
         private ExcelHellCellView[,] views;
         private List<CellModel> selection;
         private WorksheetSchema schema;
         private List<ReportGoal> goals;
+
         private Text formulaBarText;
         private string lastExpression = string.Empty;
         private Button deleteButton;
+
+        private bool pointerDown;
+        private bool selectingRange;
+        private bool movePrepared;
+        private bool draggingMove;
+        private bool draggingFormula;
+        private CellModel pressCell;
+        private CellModel hoverCell;
+        private FormulaKind draggedFormula;
+        private Vector2 pressScreenPosition;
+
+        private GameObject dragGhost;
+        private RectTransform dragGhostRect;
+        private Image dragGhostImage;
+        private Text dragGhostText;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
             if (FindFirstObjectByType<PrototypeFormulaCells>() != null) return;
-            var helper = new GameObject("EXEL HELL Formula Cells").AddComponent<PrototypeFormulaCells>();
+            var helper = new GameObject("EXEL HELL Formula Cells 2.0").AddComponent<PrototypeFormulaCells>();
             DontDestroyOnLoad(helper.gameObject);
         }
 
@@ -55,14 +83,30 @@ namespace ExcelHell.Prototype
         {
             var current = FindFirstObjectByType<ExcelHellPrototype>();
             if (current != prototype) Bind(current);
-            if (prototype == null || cells == null) return;
-            EnsureFormulaBindings();
+            if (prototype == null || cells == null || !FormulaModeEnabled()) return;
+
+            EnsureInteractionBindings();
             RefreshFormulaPresentation();
+
+            if (pointerDown && movePrepared && !selectingRange && !draggingMove)
+            {
+                var pointer = CurrentPointerPosition();
+                if (Vector2.Distance(pointer, pressScreenPosition) >= DragThresholdPixels)
+                    BeginMoveDrag();
+            }
+
+            if (draggingMove)
+                UpdateGhostPosition();
         }
+
+        private bool FormulaModeEnabled() => PrototypeLevelRuntime.Current.FormulaCellsEnabled;
 
         private void Bind(ExcelHellPrototype owner)
         {
+            DestroyGhost();
             overlays.Clear();
+            ResetPointerState();
+
             prototype = owner;
             cells = null;
             views = null;
@@ -72,6 +116,7 @@ namespace ExcelHell.Prototype
             formulaBarText = null;
             deleteButton = null;
             lastExpression = string.Empty;
+
             if (prototype == null) return;
 
             cells = CellsField?.GetValue(prototype) as CellModel[,];
@@ -80,9 +125,13 @@ namespace ExcelHell.Prototype
             schema = SchemaField?.GetValue(prototype) as WorksheetSchema;
             goals = GoalsField?.GetValue(prototype) as List<ReportGoal>;
 
+            if (!FormulaModeEnabled()) return;
+
             BuildFormulaBar();
+            HideLegacyControls();
             RebindDeleteProtection();
-            EnsureFormulaBindings();
+            EnsureInteractionBindings();
+            BuildGhost();
         }
 
         private void BuildFormulaBar()
@@ -102,17 +151,44 @@ namespace ExcelHell.Prototype
             var fx = CreateText(root.transform, "fx", 14, FontStyle.Bold, TextAnchor.MiddleCenter);
             SetRect(fx.rectTransform, 0f, 0f, 42f, 28f);
             fx.color = new Color(0.22f, 0.28f, 0.32f, 1f);
+            fx.raycastTarget = false;
 
             formulaBarText = CreateText(root.transform, string.Empty, 14, FontStyle.Normal, TextAnchor.MiddleLeft);
             SetRect(formulaBarText.rectTransform, 48f, 0f, 844f, 28f);
             formulaBarText.color = new Color(0.12f, 0.13f, 0.15f, 1f);
+            formulaBarText.raycastTarget = false;
+        }
+
+        private void HideLegacyControls()
+        {
+            var hidden = new HashSet<string> { "ui.sum", "ui.sort", "ui.cut", "ui.paste" };
+            foreach (var button in prototype.GetComponentsInChildren<Button>(true))
+                if (hidden.Contains(button.gameObject.name)) button.gameObject.SetActive(false);
+
+            var clipboardText = ClipboardTextField?.GetValue(prototype) as Text;
+            if (clipboardText != null) clipboardText.gameObject.SetActive(false);
+
+            deleteButton = prototype.GetComponentsInChildren<Button>(true)
+                .FirstOrDefault(button => button.gameObject.name == "ui.delete");
+            if (deleteButton != null)
+            {
+                var rect = deleteButton.GetComponent<RectTransform>();
+                if (rect != null)
+                {
+                    var position = rect.anchoredPosition;
+                    position.x = 20f;
+                    rect.anchoredPosition = position;
+                }
+            }
         }
 
         private void RebindDeleteProtection()
         {
-            deleteButton = prototype.GetComponentsInChildren<Button>(true)
-                .FirstOrDefault(button => button.gameObject.name == "ui.delete");
+            if (deleteButton == null)
+                deleteButton = prototype.GetComponentsInChildren<Button>(true)
+                    .FirstOrDefault(button => button.gameObject.name == "ui.delete");
             if (deleteButton == null) return;
+
             deleteButton.onClick.RemoveAllListeners();
             deleteButton.onClick.AddListener(DeleteProxy);
         }
@@ -127,19 +203,23 @@ namespace ExcelHell.Prototype
             LegacyDeleteMethod?.Invoke(prototype, null);
         }
 
-        private void EnsureFormulaBindings()
+        private void EnsureInteractionBindings()
         {
             if (views == null || cells == null) return;
+
             foreach (var cell in cells)
             {
-                if (!cell.IsFormula || overlays.ContainsKey(cell)) continue;
+                if (overlays.ContainsKey(cell)) continue;
                 var view = views[cell.Row, cell.Column];
                 if (view == null) continue;
 
-                var overlayGo = new GameObject("Formula Activation", typeof(RectTransform), typeof(Image), typeof(FormulaCellOverlay));
+                var overlayGo = new GameObject("Formula 2.0 Interaction", typeof(RectTransform), typeof(Image), typeof(FormulaCellOverlay));
                 overlayGo.transform.SetParent(view.transform, false);
                 Stretch(overlayGo.GetComponent<RectTransform>());
-                overlayGo.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.001f);
+
+                var hitbox = overlayGo.GetComponent<Image>();
+                hitbox.color = new Color(1f, 1f, 1f, 0.001f);
+                hitbox.raycastTarget = true;
 
                 var text = CreateText(overlayGo.transform, string.Empty, 13, FontStyle.Bold, TextAnchor.MiddleCenter);
                 Stretch(text.rectTransform, 4f);
@@ -147,7 +227,7 @@ namespace ExcelHell.Prototype
                 text.raycastTarget = false;
 
                 var overlay = overlayGo.GetComponent<FormulaCellOverlay>();
-                overlay.Initialize(this, prototype, cell, text, view.GetComponent<Image>());
+                overlay.Initialize(this, cell, text, view.GetComponent<Image>());
                 overlays[cell] = overlay;
             }
         }
@@ -159,14 +239,16 @@ namespace ExcelHell.Prototype
                 var cell = pair.Key;
                 var overlay = pair.Value;
                 if (overlay == null) continue;
-                if (cell.State != CellState.Normal)
+
+                if (!cell.IsFormula || cell.State != CellState.Normal)
                 {
                     overlay.SetFormulaText(string.Empty);
                     continue;
                 }
+
                 overlay.SetFormulaText(FormulaDisplay(cell));
                 overlay.SetTextColor(FormulaTextColor);
-                if (!IsReportTarget(cell)) overlay.SetBackground(new Color(0.88f, 0.92f, 0.97f, 1f));
+                if (!IsReportTarget(cell)) overlay.SetBackground(FormulaBackgroundColor);
             }
 
             if (formulaBarText == null) return;
@@ -182,85 +264,324 @@ namespace ExcelHell.Prototype
             return cell.Occupant == null ? $"={function}()" : $"={function}({DisplayToken(cell.Occupant)})";
         }
 
-        internal bool TryActivate(CellModel formulaCell)
+        internal void HandlePointerDown(CellModel cell, PointerEventData eventData)
         {
-            if (prototype == null || formulaCell == null || !formulaCell.CanActivateFormula) return false;
-            if (CanActMethod != null && !(bool)CanActMethod.Invoke(prototype, null)) return true;
-            return formulaCell.Formula switch
-            {
-                FormulaKind.Sum => TrySum(formulaCell),
-                FormulaKind.Sort => TrySort(formulaCell),
-                _ => false
-            };
-        }
+            if (eventData.button != PointerEventData.InputButton.Left || prototype == null || cell == null) return;
 
-        internal bool IsValidArgumentFor(CellModel formulaCell)
-        {
-            if (formulaCell == null || !formulaCell.CanActivateFormula || selection == null) return false;
-            return formulaCell.Formula switch
-            {
-                FormulaKind.Sum => TryGetNumericSources(formulaCell, out _),
-                FormulaKind.Sort => TryGetSortKey(out _, out _),
-                _ => false
-            };
-        }
+            ResetPointerState();
+            pointerDown = true;
+            pressCell = cell;
+            hoverCell = cell;
+            pressScreenPosition = eventData.position;
 
-        private bool TrySum(CellModel target)
-        {
-            if (!TryGetNumericSources(target, out var sources))
+            if (ShiftHeld())
             {
-                SetStatus(Ru("SUM: выделите прямоугольный диапазон минимум с двумя числами.",
-                    "SUM: select a rectangular range containing at least two numbers."));
-                return true;
+                selectingRange = true;
+                prototype.BeginSelection(cell.Row, cell.Column);
+                return;
             }
 
-            var sum = sources.Sum(cell => cell.Occupant.Number.Value);
-            var provenance = sources.SelectMany(source => source.Occupant.SourceTokenIds ?? new List<string>()).Distinct().ToArray();
-            var required = sources.Any(source => source.Occupant.IsRequiredSource);
-            var count = sources.Count;
+            PrepareMove(cell);
+        }
 
-            // ReportCell > FormulaCell: filled report values are persistent operands.
-            // Ordinary worksheet sources remain destructively consumed by SUM.
-            foreach (var source in sources)
-                if (!IsReportTarget(source)) source.Occupant = null;
+        internal void HandlePointerEnter(CellModel cell, PointerEventData eventData)
+        {
+            if (cell == null) return;
+            hoverCell = cell;
+            if (!pointerDown) return;
+
+            if (selectingRange)
+            {
+                prototype.HoverSelection(cell.Row, cell.Column);
+                return;
+            }
+
+            if (movePrepared && !draggingMove && pressCell != cell)
+                BeginMoveDrag();
+        }
+
+        internal void HandlePointerExit(CellModel cell, PointerEventData eventData)
+        {
+            if (hoverCell == cell) hoverCell = null;
+        }
+
+        internal void HandlePointerUp(CellModel cell, PointerEventData eventData)
+        {
+            if (eventData.button != PointerEventData.InputButton.Left || !pointerDown) return;
+
+            if (selectingRange)
+            {
+                prototype.EndSelection();
+                pointerDown = false;
+                selectingRange = false;
+                return;
+            }
+
+            if (!draggingMove)
+            {
+                SelectSingle(pressCell);
+                ResetPointerState();
+                return;
+            }
+
+            TryDrop(hoverCell);
+            ResetPointerState();
+        }
+
+        private void PrepareMove(CellModel source)
+        {
+            dragTokens.Clear();
+            dragSelectionCells.Clear();
+            draggingFormula = false;
+            draggedFormula = FormulaKind.None;
+            movePrepared = false;
+
+            if (source == null || source.State != CellState.Normal) return;
+
+            if (source.Occupant != null && IsMovableToken(source.Occupant))
+            {
+                var movingSelection = selection != null && selection.Count > 1 && selection.Contains(source);
+                if (movingSelection)
+                {
+                    dragSelectionCells.AddRange(selection);
+                    foreach (var selectedCell in selection)
+                        if (selectedCell.State == CellState.Normal && selectedCell.Occupant != null && IsMovableToken(selectedCell.Occupant))
+                            dragTokens.Add(new TokenPayload(selectedCell, selectedCell.Occupant));
+                }
+                else
+                {
+                    dragSelectionCells.Add(source);
+                    dragTokens.Add(new TokenPayload(source, source.Occupant));
+                    selection?.Clear();
+                    RefreshAllMethod?.Invoke(prototype, null);
+                }
+
+                movePrepared = dragTokens.Count > 0;
+                return;
+            }
+
+            if (source.Occupant == null && source.IsFormula)
+            {
+                selection?.Clear();
+                RefreshAllMethod?.Invoke(prototype, null);
+                draggingFormula = true;
+                draggedFormula = source.Formula;
+                dragSelectionCells.Add(source);
+                movePrepared = true;
+            }
+        }
+
+        private void BeginMoveDrag()
+        {
+            if (!movePrepared || pressCell == null) return;
+
+            draggingMove = true;
+            EnsureGhost();
+
+            if (draggingFormula)
+            {
+                dragGhostText.text = draggedFormula == FormulaKind.Sum ? "=SUM()" : "=SORT()";
+                dragGhostImage.color = new Color(0.78f, 0.87f, 1f, 0.94f);
+            }
+            else if (dragTokens.Count == 1)
+            {
+                dragGhostText.text = DisplayToken(dragTokens[0].Token);
+                dragGhostImage.color = new Color(0.95f, 0.96f, 0.98f, 0.94f);
+            }
+            else
+            {
+                var preview = string.Join(" · ", dragTokens.Take(4).Select(payload => DisplayToken(payload.Token)));
+                if (dragTokens.Count > 4) preview += " · …";
+                dragGhostText.text = $"{dragTokens.Count} ×  {preview}";
+                dragGhostImage.color = new Color(0.95f, 0.96f, 0.98f, 0.94f);
+            }
+
+            dragGhost.SetActive(true);
+            UpdateGhostPosition();
+        }
+
+        private void TryDrop(CellModel target)
+        {
+            if (target == null)
+            {
+                SetStatus(Ru("MOVE: отпустите объект над клеткой таблицы.", "MOVE: drop the object over a worksheet cell."));
+                return;
+            }
+
+            if (CanActMethod != null && !(bool)CanActMethod.Invoke(prototype, null)) return;
+
+            if (draggingFormula)
+            {
+                TryMoveFormula(target);
+                return;
+            }
+
+            if (target.IsFormula)
+            {
+                if (target.Occupant != null || target.State != CellState.Normal)
+                {
+                    SetStatus(Ru("Формула занята. Сначала вынесите её содержимое.", "Formula is occupied. Move its occupant out first."));
+                    return;
+                }
+
+                if (target.Formula == FormulaKind.Sum) TrySumDrop(target);
+                else if (target.Formula == FormulaKind.Sort) TrySortDrop(target);
+                return;
+            }
+
+            TryMoveTokens(target);
+        }
+
+        private void TryMoveFormula(CellModel target)
+        {
+            if (pressCell == null || !pressCell.IsFormula || pressCell.Occupant != null || pressCell.State != CellState.Normal || draggedFormula == FormulaKind.None)
+            {
+                SetStatus(Ru("MOVE: эта формула сейчас не переносится.", "MOVE: this formula cannot be moved right now."));
+                return;
+            }
+
+            if (target == pressCell) return;
+            if (target.State != CellState.Normal || target.Occupant != null || target.IsFormula)
+            {
+                SetStatus(Ru("MOVE: формуле нужна пустая доступная клетка.", "MOVE: formula needs an empty available cell."));
+                return;
+            }
+
+            pressCell.Formula = FormulaKind.None;
+            target.Formula = draggedFormula;
+            selection?.Clear();
+            lastExpression = string.Empty;
+            CompleteAction(Ru($"Формула перенесена в {target.Address}.", $"Formula moved to {target.Address}."));
+        }
+
+        private void TryMoveTokens(CellModel target)
+        {
+            if (dragTokens.Count == 0 || pressCell == null) return;
+
+            var dr = target.Row - pressCell.Row;
+            var dc = target.Column - pressCell.Column;
+            if (dr == 0 && dc == 0) return;
+
+            var movingIds = dragTokens.Select(payload => payload.Token.Id).ToHashSet();
+            var destinations = new List<CellModel>(dragTokens.Count);
+
+            foreach (var payload in dragTokens)
+            {
+                if (payload.Source.State != CellState.Normal || payload.Source.Occupant != payload.Token)
+                {
+                    SetStatus(Ru("MOVE: исходные данные изменились.", "MOVE: source data changed."));
+                    return;
+                }
+
+                var row = payload.Source.Row + dr;
+                var column = payload.Source.Column + dc;
+                if (!InsideBoard(row, column))
+                {
+                    SetStatus(Ru("MOVE: диапазон выходит за границы таблицы.", "MOVE: range would leave the worksheet."));
+                    return;
+                }
+
+                var destination = cells[row, column];
+                if (destination.State != CellState.Normal || destination.IsFormula)
+                {
+                    SetStatus(Ru("MOVE: конечные клетки должны быть доступными и не содержать формул.", "MOVE: destination cells must be available and formula-free."));
+                    return;
+                }
+
+                if (destination.Occupant != null && !movingIds.Contains(destination.Occupant.Id))
+                {
+                    SetStatus(Ru("MOVE: конечный диапазон занят.", "MOVE: destination range is occupied."));
+                    return;
+                }
+                destinations.Add(destination);
+            }
+
+            foreach (var payload in dragTokens) payload.Source.Occupant = null;
+            for (var i = 0; i < dragTokens.Count; i++) destinations[i].Occupant = dragTokens[i].Token;
+
+            var movedCount = dragTokens.Count;
+            selection?.Clear();
+            lastExpression = string.Empty;
+            CompleteAction(Ru(
+                movedCount == 1 ? $"MOVE → {target.Address}." : $"MOVE перенёс {movedCount} значений.",
+                movedCount == 1 ? $"MOVE → {target.Address}." : $"MOVE relocated {movedCount} values."));
+        }
+
+        private void TrySumDrop(CellModel target)
+        {
+            if (!target.CanActivateFormula || target.Formula != FormulaKind.Sum) return;
+            if (dragSelectionCells.Contains(target))
+            {
+                SetStatus(Ru("SUM: целевая формула не должна входить в исходный диапазон.", "SUM: target formula cannot be part of the source range."));
+                return;
+            }
+
+            var numericSources = new List<TokenPayload>();
+            foreach (var sourceCell in dragSelectionCells)
+            {
+                if (sourceCell.State != CellState.Normal)
+                {
+                    SetStatus(Ru("SUM: диапазон пересекает недоступную клетку.", "SUM: range crosses an unavailable cell."));
+                    return;
+                }
+                if (sourceCell.Occupant == null) continue;
+
+                var token = sourceCell.Occupant;
+                if (!token.IsNumeric || (token.Kind != ContentKind.Data && token.Kind != ContentKind.Aggregate))
+                {
+                    SetStatus(Ru("SUM: диапазон может содержать только числа и обычные пустые клетки.", "SUM: range may contain only numbers and normal blanks."));
+                    return;
+                }
+                numericSources.Add(new TokenPayload(sourceCell, token));
+            }
+
+            if (numericSources.Count < 2)
+            {
+                SetStatus(Ru("SUM: нужен диапазон минимум с двумя числами.", "SUM: range needs at least two numbers."));
+                return;
+            }
+
+            var sum = numericSources.Sum(source => source.Token.Number.Value);
+            var provenance = numericSources.SelectMany(source => source.Token.SourceTokenIds ?? new List<string>()).Distinct().ToArray();
+            var required = numericSources.Any(source => source.Token.IsRequiredSource);
+
+            // ReportCell > FormulaCell: report occupants are readable but persistent operands.
+            foreach (var source in numericSources)
+                if (!IsReportTarget(source.Source)) source.Source.Occupant = null;
 
             var counter = AggregateCounterField != null ? (int)AggregateCounterField.GetValue(prototype) : 0;
             counter++;
             AggregateCounterField?.SetValue(prototype, counter);
             target.Occupant = ContentToken.Aggregate($"aggregate.{counter}", sum, provenance, required);
 
-            lastExpression = $"=SUM({SelectionAddressExpression()})";
-            selection.Clear();
-            CompleteAction(Ru($"SUM схлопнул {count} значений в {target.Address}.", $"SUM collapsed {count} values into {target.Address}."));
-            return true;
+            lastExpression = $"=SUM({AddressExpression(dragSelectionCells)})";
+            selection?.Clear();
+            CompleteAction(Ru(
+                $"SUM схлопнул {numericSources.Count} значений в {target.Address}.",
+                $"SUM collapsed {numericSources.Count} values into {target.Address}."));
         }
 
-        private bool TryGetNumericSources(CellModel target, out List<CellModel> numeric)
+        private void TrySortDrop(CellModel target)
         {
-            numeric = new List<CellModel>();
-            if (selection == null || selection.Count == 0 || selection.Contains(target)) return false;
-            foreach (var cell in selection)
+            if (!target.CanActivateFormula || target.Formula != FormulaKind.Sort) return;
+            if (dragTokens.Count != 1)
             {
-                if (cell.State != CellState.Normal) return false;
-                if (cell.Occupant == null) continue;
-                if (!cell.Occupant.IsNumeric) return false;
-                if (cell.Occupant.Kind != ContentKind.Data && cell.Occupant.Kind != ContentKind.Aggregate) return false;
-                numeric.Add(cell);
+                SetStatus(Ru("SORT: перетащите один ключ параметра или сотрудника.", "SORT: drag one field or employee key."));
+                return;
             }
-            return numeric.Count >= 2;
-        }
 
-        private bool TrySort(CellModel target)
-        {
-            if (!TryGetSortKey(out var keyCell, out var key))
+            var payload = dragTokens[0];
+            var key = payload.Token;
+            if (key.Kind != ContentKind.RecordKey && key.Kind != ContentKind.FieldKey)
             {
-                SetStatus(Ru("SORT: выделите ровно один ключ параметра или сотрудника.", "SORT: select exactly one field or employee key."));
-                return true;
+                SetStatus(Ru("SORT: нужен ключ параметра или сотрудника.", "SORT: a field or employee key is required."));
+                return;
             }
+
             if (!TryBuildFormulaSortPlan(target, key, out var tokens, out var destinations))
             {
                 SetStatus("#SPILL!");
-                return true;
+                return;
             }
 
             var movingIds = tokens.Where(token => token != null).Select(token => token.Id).ToHashSet();
@@ -269,26 +590,14 @@ namespace ExcelHell.Prototype
             for (var i = 0; i < tokens.Count; i++)
                 if (tokens[i] != null) destinations[i].Occupant = tokens[i];
 
-            keyCell.Occupant = null;
+            payload.Source.Occupant = null;
             target.Occupant = key;
-            lastExpression = $"=SORT({keyCell.Address})";
             var moved = tokens.Count(token => token != null);
-            selection.Clear();
-            CompleteAction(Ru($"SORT переместил {moved} значений к {target.Address}.", $"SORT moved {moved} values to {target.Address}."));
-            return true;
-        }
-
-        private bool TryGetSortKey(out CellModel keyCell, out ContentToken key)
-        {
-            keyCell = null;
-            key = null;
-            if (selection == null || selection.Count != 1) return false;
-            var candidate = selection[0];
-            if (candidate.State != CellState.Normal || candidate.Occupant == null) return false;
-            if (candidate.Occupant.Kind != ContentKind.RecordKey && candidate.Occupant.Kind != ContentKind.FieldKey) return false;
-            keyCell = candidate;
-            key = candidate.Occupant;
-            return true;
+            lastExpression = $"=SORT({payload.Source.Address})";
+            selection?.Clear();
+            CompleteAction(Ru(
+                $"SORT переместил {moved} значений к {target.Address}.",
+                $"SORT moved {moved} values to {target.Address}."));
         }
 
         private bool TryBuildFormulaSortPlan(CellModel formulaCell, ContentToken key, out List<ContentToken> tokens, out List<CellModel> destinations)
@@ -299,19 +608,22 @@ namespace ExcelHell.Prototype
 
             var data = cells.Cast<CellModel>()
                 .Where(cell => cell.State == CellState.Normal && cell.Occupant?.Kind == ContentKind.Data)
-                .Select(cell => cell.Occupant).ToList();
+                .Select(cell => cell.Occupant)
+                .ToList();
 
             int dr;
             int dc;
             if (key.Kind == ContentKind.FieldKey)
             {
                 tokens = schema.Records.Select(recordId => data.FirstOrDefault(token => token.FieldId == key.FieldId && token.RecordId == recordId)).ToList();
-                dr = 1; dc = 0;
+                dr = 1;
+                dc = 0;
             }
             else
             {
                 tokens = schema.Fields.Select(fieldId => data.FirstOrDefault(token => token.RecordId == key.RecordId && token.FieldId == fieldId)).ToList();
-                dr = 0; dc = 1;
+                dr = 0;
+                dc = 1;
             }
 
             if (tokens.All(token => token == null)) return false;
@@ -320,7 +632,8 @@ namespace ExcelHell.Prototype
             {
                 var row = formulaCell.Row + dr * i;
                 var column = formulaCell.Column + dc * i;
-                if (row < 0 || row >= cells.GetLength(0) || column < 0 || column >= cells.GetLength(1)) return false;
+                if (!InsideBoard(row, column)) return false;
+
                 var destination = cells[row, column];
                 if (destination.State != CellState.Normal || destination.IsFormula) return false;
                 if (destination.Occupant != null && !movingIds.Contains(destination.Occupant.Id)) return false;
@@ -329,16 +642,36 @@ namespace ExcelHell.Prototype
             return true;
         }
 
+        private bool InsideBoard(int row, int column) => row >= 0 && column >= 0 && row < cells.GetLength(0) && column < cells.GetLength(1);
+
         private bool IsReportTarget(CellModel cell) =>
             cell != null && goals != null && goals.Any(goal => goal.TargetRow == cell.Row && goal.TargetColumn == cell.Column);
 
-        private string SelectionAddressExpression()
+        private static bool IsMovableToken(ContentToken token) => token != null && token.Kind != ContentKind.Label;
+
+        private void SelectSingle(CellModel cell)
         {
-            if (selection == null || selection.Count == 0) return string.Empty;
-            var minRow = selection.Min(cell => cell.Row);
-            var maxRow = selection.Max(cell => cell.Row);
-            var minColumn = selection.Min(cell => cell.Column);
-            var maxColumn = selection.Max(cell => cell.Column);
+            if (cell == null) return;
+            prototype.BeginSelection(cell.Row, cell.Column);
+            prototype.EndSelection();
+            lastExpression = string.Empty;
+        }
+
+        private bool ShiftHeld()
+        {
+            var keyboard = Keyboard.current;
+            return keyboard != null && (keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed);
+        }
+
+        private Vector2 CurrentPointerPosition() => Mouse.current != null ? Mouse.current.position.ReadValue() : pressScreenPosition;
+
+        private string AddressExpression(IReadOnlyList<CellModel> sourceCells)
+        {
+            if (sourceCells == null || sourceCells.Count == 0) return string.Empty;
+            var minRow = sourceCells.Min(cell => cell.Row);
+            var maxRow = sourceCells.Max(cell => cell.Row);
+            var minColumn = sourceCells.Min(cell => cell.Column);
+            var maxColumn = sourceCells.Max(cell => cell.Column);
             var first = cells[minRow, minColumn].Address;
             var last = cells[maxRow, maxColumn].Address;
             return first == last ? first : $"{first}:{last}";
@@ -376,6 +709,71 @@ namespace ExcelHell.Prototype
         {
             CompletePlayerActionMethod?.Invoke(prototype, new object[] { message });
             RefreshAllMethod?.Invoke(prototype, null);
+            RefreshFormulaPresentation();
+        }
+
+        private void ResetPointerState()
+        {
+            pointerDown = false;
+            selectingRange = false;
+            movePrepared = false;
+            draggingMove = false;
+            draggingFormula = false;
+            pressCell = null;
+            hoverCell = null;
+            draggedFormula = FormulaKind.None;
+            dragTokens.Clear();
+            dragSelectionCells.Clear();
+            if (dragGhost != null) dragGhost.SetActive(false);
+        }
+
+        private void BuildGhost()
+        {
+            if (dragGhost != null || prototype == null) return;
+            var canvas = prototype.GetComponentsInChildren<Canvas>(true).FirstOrDefault();
+            if (canvas == null) return;
+
+            dragGhost = new GameObject("MOVE Ghost", typeof(RectTransform), typeof(Image), typeof(Outline));
+            dragGhost.transform.SetParent(canvas.transform, false);
+            dragGhostRect = dragGhost.GetComponent<RectTransform>();
+            dragGhostRect.anchorMin = dragGhostRect.anchorMax = new Vector2(0.5f, 0.5f);
+            dragGhostRect.pivot = new Vector2(0f, 1f);
+            dragGhostRect.sizeDelta = new Vector2(170f, 48f);
+
+            dragGhostImage = dragGhost.GetComponent<Image>();
+            dragGhostImage.color = new Color(0.95f, 0.96f, 0.98f, 0.94f);
+            dragGhostImage.raycastTarget = false;
+
+            var outline = dragGhost.GetComponent<Outline>();
+            outline.effectColor = new Color(0.14f, 0.24f, 0.34f, 0.65f);
+            outline.effectDistance = new Vector2(1f, -1f);
+
+            dragGhostText = CreateText(dragGhost.transform, string.Empty, 14, FontStyle.Bold, TextAnchor.MiddleCenter);
+            Stretch(dragGhostText.rectTransform, 5f);
+            dragGhostText.color = new Color(0.10f, 0.13f, 0.18f, 1f);
+            dragGhostText.raycastTarget = false;
+            dragGhost.SetActive(false);
+        }
+
+        private void EnsureGhost()
+        {
+            if (dragGhost == null) BuildGhost();
+        }
+
+        private void UpdateGhostPosition()
+        {
+            if (dragGhostRect == null) return;
+            dragGhostRect.position = CurrentPointerPosition() + new Vector2(16f, 18f);
+            dragGhost.transform.SetAsLastSibling();
+        }
+
+        private void DestroyGhost()
+        {
+            if (dragGhost != null) Destroy(dragGhost);
+            dragGhost = null;
+            dragGhostRect = null;
+            dragGhostImage = null;
+            dragGhostText = null;
         }
 
         private static Text CreateText(Transform parent, string content, int size, FontStyle style, TextAnchor alignment)
@@ -408,21 +806,33 @@ namespace ExcelHell.Prototype
             rect.offsetMin = new Vector2(padding, padding);
             rect.offsetMax = new Vector2(-padding, -padding);
         }
+
+        private readonly struct TokenPayload
+        {
+            public readonly CellModel Source;
+            public readonly ContentToken Token;
+
+            public TokenPayload(CellModel source, ContentToken token)
+            {
+                Source = source;
+                Token = token;
+            }
+        }
     }
 
-    public sealed class FormulaCellOverlay : MonoBehaviour, IPointerDownHandler, IPointerEnterHandler, IPointerUpHandler
+    /// <summary>
+    /// Universal pointer layer installed over every worksheet cell on Formula Cells 2.0 levels.
+    /// </summary>
+    public sealed class FormulaCellOverlay : MonoBehaviour, IPointerDownHandler, IPointerEnterHandler, IPointerExitHandler, IPointerUpHandler
     {
         private PrototypeFormulaCells runtime;
-        private ExcelHellPrototype prototype;
         private CellModel cell;
         private Text text;
         private Image cellBackground;
-        private bool forwardingSelection;
 
-        public void Initialize(PrototypeFormulaCells formulaRuntime, ExcelHellPrototype owner, CellModel model, Text formulaText, Image background)
+        public void Initialize(PrototypeFormulaCells formulaRuntime, CellModel model, Text formulaText, Image background)
         {
             runtime = formulaRuntime;
-            prototype = owner;
             cell = model;
             text = formulaText;
             cellBackground = background;
@@ -431,30 +841,9 @@ namespace ExcelHell.Prototype
         public void SetFormulaText(string value) { if (text != null) text.text = value; }
         public void SetTextColor(Color value) { if (text != null) text.color = value; }
         public void SetBackground(Color value) { if (cellBackground != null) cellBackground.color = value; }
-
-        public void OnPointerDown(PointerEventData eventData)
-        {
-            if (eventData.button != PointerEventData.InputButton.Left) return;
-            if (runtime != null && runtime.IsValidArgumentFor(cell))
-            {
-                runtime.TryActivate(cell);
-                forwardingSelection = false;
-                return;
-            }
-            forwardingSelection = true;
-            prototype.BeginSelection(cell.Row, cell.Column);
-        }
-
-        public void OnPointerEnter(PointerEventData eventData)
-        {
-            if (forwardingSelection) prototype.HoverSelection(cell.Row, cell.Column);
-        }
-
-        public void OnPointerUp(PointerEventData eventData)
-        {
-            if (eventData.button != PointerEventData.InputButton.Left) return;
-            if (forwardingSelection) prototype.EndSelection();
-            forwardingSelection = false;
-        }
+        public void OnPointerDown(PointerEventData eventData) => runtime?.HandlePointerDown(cell, eventData);
+        public void OnPointerEnter(PointerEventData eventData) => runtime?.HandlePointerEnter(cell, eventData);
+        public void OnPointerExit(PointerEventData eventData) => runtime?.HandlePointerExit(cell, eventData);
+        public void OnPointerUp(PointerEventData eventData) => runtime?.HandlePointerUp(cell, eventData);
     }
 }
