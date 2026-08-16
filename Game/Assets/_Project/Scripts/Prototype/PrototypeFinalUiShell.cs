@@ -81,13 +81,12 @@ namespace ExcelHell.Prototype
             {
                 scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
                 scaler.referenceResolution = new Vector2(ReferenceWidth, ReferenceHeight);
-                scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+                scaler.screenMatchMode = CanvasScaler.ScaleMode.ScaleWithScreenSize == scaler.uiScaleMode
+                    ? CanvasScaler.ScreenMatchMode.MatchWidthOrHeight
+                    : scaler.screenMatchMode;
 
-                // Keep the full 1600x900 safe frame visible. On extra-wide windows, height is the limiting
-                // dimension; on narrower windows, width is. This prevents bottom rows from leaving the viewport.
                 var aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : ReferenceWidth / ReferenceHeight;
-                var referenceAspect = ReferenceWidth / ReferenceHeight;
-                scaler.matchWidthOrHeight = aspect >= referenceAspect ? 1f : 0f;
+                scaler.matchWidthOrHeight = aspect >= ReferenceWidth / ReferenceHeight ? 1f : 0f;
             }
 
             background = FindRect(canvas.transform, "Background");
@@ -105,14 +104,14 @@ namespace ExcelHell.Prototype
             ApplyWorksheetGeometry();
             HideLegacyChrome();
             applied = true;
-            Debug.Log("[UI-SHELL] Gameplay shell v2 applied: full-screen root, compact topbar, production rail hidden.");
+            Debug.Log("[UI-SHELL] Visual shell v1 applied: office backdrop + spreadsheet surface + world protagonist slot.");
         }
 
         private void ApplyBackground()
         {
             Stretch(background);
             var image = background.GetComponent<Image>();
-            if (image != null) image.color = new Color(0.055f, 0.061f, 0.071f, 1f);
+            if (image != null) image.color = PrototypeVisualTheme.Night;
         }
 
         private void BuildChrome()
@@ -122,13 +121,18 @@ namespace ExcelHell.Prototype
             chromeRoot.transform.SetAsFirstSibling();
             Stretch(chromeRoot.GetComponent<RectTransform>());
 
-            var office = CreatePanel(chromeRoot.transform, "Office Backdrop Reserved", new Color(0.075f, 0.082f, 0.095f, 1f));
-            Stretch(office.rectTransform);
+            BuildOfficeBackdrop();
 
-            var app = CreatePanel(chromeRoot.transform, "Spreadsheet App", new Color(0.90f, 0.915f, 0.93f, 1f));
+            var veil = CreatePanel(chromeRoot.transform, "Office Veil", new Color(0.02f, 0.03f, 0.05f, 0.12f));
+            Stretch(veil.rectTransform);
+
+            var shadow = CreatePanel(chromeRoot.transform, "Spreadsheet Shadow", new Color(0f, 0f, 0f, 0.38f));
+            SetTopLeft(shadow.rectTransform, AppX + 10f, AppY - 10f, AppWidth, AppHeight);
+
+            var app = CreatePanel(chromeRoot.transform, "Spreadsheet App", new Color(0.92f, 0.93f, 0.945f, 0.985f));
             SetTopLeft(app.rectTransform, AppX, AppY, AppWidth, AppHeight);
 
-            var topbar = CreatePanel(app.transform, "Topbar Surface", new Color(0.105f, 0.12f, 0.145f, 1f));
+            var topbar = CreatePanel(app.transform, "Topbar Surface", PrototypeVisualTheme.Chrome);
             SetTopLeft(topbar.rectTransform, 0f, 0f, AppWidth, 56f);
 
             CreateReservedButton(app.transform, "Tasks Reserved", "ЗАДАЧИ", 16f, -8f, 128f, 40f);
@@ -137,23 +141,37 @@ namespace ExcelHell.Prototype
             CreateReservedButton(app.transform, "Chat Reserved", "✉", 974f, -8f, 56f, 40f);
             CreateReservedButton(app.transform, "Menu Reserved", "МЕНЮ", 1038f, -8f, 166f, 40f);
 
-            var formulaRow = CreatePanel(app.transform, "Formula Row Surface", new Color(0.965f, 0.97f, 0.975f, 1f));
+            var formulaRow = CreatePanel(app.transform, "Formula Row Surface", PrototypeVisualTheme.SheetSoft);
             SetTopLeft(formulaRow.rectTransform, 16f, -70f, WorksheetWidth, FormulaHeight);
             CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1140f, -70f, 64f, FormulaHeight);
 
-            var worksheetSurface = CreatePanel(app.transform, "Worksheet Surface", new Color(0.975f, 0.98f, 0.985f, 1f));
+            var worksheetSurface = CreatePanel(app.transform, "Worksheet Surface", PrototypeVisualTheme.Sheet);
             SetTopLeft(worksheetSurface.rectTransform, 16f, -112f, WorksheetWidth, WorksheetHeight);
 
-            var officeZone = CreatePanel(chromeRoot.transform, "Office Scene Reserved", new Color(0.085f, 0.092f, 0.105f, 1f));
-            SetTopLeft(officeZone.rectTransform, 1260f, -72f, 316f, 778f);
-            AddPlaceholderLabel(officeZone.transform, "OFFICE ART", 11, new Color(0.24f, 0.27f, 0.31f, 1f));
+            var officeZone = new GameObject("Office Scene Reserved", typeof(RectTransform));
+            officeZone.transform.SetParent(chromeRoot.transform, false);
+            SetTopLeft(officeZone.GetComponent<RectTransform>(), 1250f, -64f, 330f, 800f);
 
-            var floor = CreatePanel(chromeRoot.transform, "Office Floor", new Color(0.13f, 0.14f, 0.15f, 1f));
-            SetTopLeft(floor.rectTransform, 1260f, -848f, 316f, 4f);
+            var avatar = new GameObject("Avatar Reserved", typeof(RectTransform));
+            avatar.transform.SetParent(chromeRoot.transform, false);
+            SetTopLeft(avatar.GetComponent<RectTransform>(), 1254f, -568f, 322f, 286f);
+        }
 
-            var avatar = CreatePanel(chromeRoot.transform, "Avatar Reserved", new Color(0.16f, 0.18f, 0.21f, 1f));
-            SetTopLeft(avatar.rectTransform, 1284f, -520f, 268f, 328f);
-            AddPlaceholderLabel(avatar.transform, "NORMAL\n[PROTAGONIST]", 13, new Color(0.74f, 0.78f, 0.84f, 1f));
+        private void BuildOfficeBackdrop()
+        {
+            var go = new GameObject("Office Backdrop", typeof(RectTransform), typeof(RawImage));
+            go.transform.SetParent(chromeRoot.transform, false);
+            Stretch(go.GetComponent<RectTransform>());
+
+            var image = go.GetComponent<RawImage>();
+            image.raycastTarget = false;
+            image.color = Color.white;
+            image.texture = Resources.Load<Texture2D>("Art/OfficeBackground");
+            if (image.texture == null)
+            {
+                image.color = new Color(0.085f, 0.10f, 0.13f, 1f);
+                Debug.LogWarning("[VISUAL] Art/OfficeBackground not found in Resources; using dusk fallback until the PNG is imported.");
+            }
         }
 
         private void ApplyWorksheetGeometry()
@@ -176,16 +194,19 @@ namespace ExcelHell.Prototype
 
             var formulaTexts = formulaBar.GetComponentsInChildren<Text>(true);
             var expression = formulaTexts.FirstOrDefault(text => text.text != "fx");
+            foreach (var text in formulaTexts)
+            {
+                text.font = PrototypeVisualTheme.MonoFont;
+                text.color = PrototypeVisualTheme.Ink;
+            }
             if (expression != null)
                 SetTopLeft(expression.rectTransform, 48f, 0f, FormulaWidth - 56f, FormulaHeight);
         }
 
         private void HideLegacyChrome()
         {
-            // The legacy sidebar remains alive as the F3 developer overlay because it owns stable callbacks.
             sidebar.SetParent(background, false);
             sidebar.gameObject.SetActive(false);
-
             if (title != null) title.gameObject.SetActive(false);
             if (legacyTurn != null) legacyTurn.gameObject.SetActive(false);
         }
@@ -215,9 +236,9 @@ namespace ExcelHell.Prototype
 
         private static void CreateReservedButton(Transform parent, string name, string label, float x, float y, float width, float height)
         {
-            var panel = CreatePanel(parent, name, new Color(0.16f, 0.18f, 0.22f, 1f));
+            var panel = CreatePanel(parent, name, PrototypeVisualTheme.ChromeRaised);
             SetTopLeft(panel.rectTransform, x, y, width, height);
-            AddPlaceholderLabel(panel.transform, label, label == "✉" ? 22 : 14, new Color(0.91f, 0.93f, 0.96f, 1f));
+            AddPlaceholderLabel(panel.transform, label, label == "✉" ? 21 : 14, PrototypeVisualTheme.Text);
         }
 
         private static void AddPlaceholderLabel(Transform parent, string value, int fontSize, Color color)
@@ -227,7 +248,7 @@ namespace ExcelHell.Prototype
             var rect = go.GetComponent<RectTransform>();
             Stretch(rect, 6f);
             var label = go.GetComponent<Text>();
-            label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            label.font = PrototypeVisualTheme.UiFont;
             label.text = value;
             label.fontSize = fontSize;
             label.fontStyle = FontStyle.Bold;
