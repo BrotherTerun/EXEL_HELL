@@ -46,7 +46,11 @@ namespace ExcelHell.Prototype
 
         private void Bind(ExcelHellPrototype owner)
         {
-            CompleteActive("rebind");
+            // A smoke-test line can arrive before the first gameplay worksheet has bound. Preserve that pending
+            // ticket across the initial null -> worksheet bind; real scene/worksheet rebinds still cancel it.
+            if (!ReferenceEquals(prototype, null))
+                CompleteActive("rebind");
+
             prototype = owner;
             canvas = null;
             avatarSlot = null;
