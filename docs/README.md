@@ -25,6 +25,7 @@ For exact authored coordinates and anomaly timings, `Game/Assets/_Project/Script
 | `00_ExcelHell_Concept_v2.md` | Current concept, pillars and planned final form. |
 | `01_Current_Gameplay_Spec_v2.md` | Canonical FC2 rules and action economy. |
 | `02_Production_Status_and_Tasks_v2.md` | Implemented / in progress / planned / explicitly cut. |
+| `03_Runtime_Architecture_v2.md` | Runtime object/service map after the scene split. |
 | `04_Typical_Action_Sequences_v2.md` | Current reusable action sequences and lower bounds. |
 | `10_Application_Shell_v2.md` | Menu / Gameplay / LevelConstructor architecture and persistence. |
 | `11_MVP_0.5_Formula_Cells_Spec_v2.md` | Implemented Formula Cells 2.0 specification. |
@@ -61,7 +62,7 @@ Final jam target: **five levels**.
 - `11_MVP_0.5_Formula_Cells_Spec.md` — first FormulaCell proposal (fixed formula properties / selection-to-activation). Superseded by FC2 v2.
 - `12_MVP_0.5_Balance_Model.md` — early FC2 model; v2 adds the final report-delivery rule and authoring workflow.
 - `playtest-4-levels.md` — old CUT/PASTE `SampleScene` playtest build.
-- `EXEL_HELL_MVP04_Balance_Model.xlsx` — frozen MVP 0.4 workbook. Do not use its action costs for FC2.
+- `EXEL_HELL_MVP04_Balance_Model.xlsx` — frozen MVP 0.4 workbook. Do not use its action costs for FC2. The current FC2 workbook was created separately instead of mutating this historical artifact.
 - `tests/**` — immutable test evidence for the version named inside each protocol.
 - `devlog/**` — historical developer narrative; facts are useful, mechanics may be obsolete.
 
