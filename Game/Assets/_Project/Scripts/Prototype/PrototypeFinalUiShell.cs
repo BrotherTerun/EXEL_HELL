@@ -12,15 +12,15 @@ namespace ExcelHell.Prototype
 
         private const float AppX = 24f;
         private const float AppY = -20f;
-        private const float AppWidth = 1220f;
+        private const float AppWidth = 1120f;
         private const float AppHeight = 856f;
 
         private const float WorksheetX = 40f;
         private const float WorksheetY = -132f;
-        private const float WorksheetWidth = 1188f;
+        private const float WorksheetWidth = 1088f;
         private const float WorksheetHeight = 720f;
         private const float FormulaY = -90f;
-        private const float FormulaWidth = 1124f;
+        private const float FormulaWidth = 1024f;
         private const float FormulaHeight = 34f;
 
         private ExcelHellPrototype prototype;
@@ -102,7 +102,7 @@ namespace ExcelHell.Prototype
             ApplyWorksheetGeometry();
             HideLegacyChrome();
             applied = true;
-            Debug.Log("[UI-SHELL] Visual shell v1 applied: office backdrop + spreadsheet surface + world protagonist slot.");
+            Debug.Log("[UI-SHELL] Visual shell v1.1 applied: narrower worksheet, expanded office stage, grounded protagonist slot.");
         }
 
         private void ApplyBackground()
@@ -121,7 +121,7 @@ namespace ExcelHell.Prototype
 
             BuildOfficeBackdrop();
 
-            var veil = CreatePanel(chromeRoot.transform, "Office Veil", new Color(0.02f, 0.03f, 0.05f, 0.12f));
+            var veil = CreatePanel(chromeRoot.transform, "Office Veil", new Color(0.02f, 0.03f, 0.05f, 0.10f));
             Stretch(veil.rectTransform);
 
             var shadow = CreatePanel(chromeRoot.transform, "Spreadsheet Shadow", new Color(0f, 0f, 0f, 0.38f));
@@ -135,24 +135,24 @@ namespace ExcelHell.Prototype
 
             CreateReservedButton(app.transform, "Tasks Reserved", "ЗАДАЧИ", 16f, -8f, 128f, 40f);
             CreateReservedButton(app.transform, "Help Reserved", "?", 152f, -8f, 44f, 40f);
-            CreateReservedButton(app.transform, "Clock Reserved", "09:00", 838f, -8f, 128f, 40f);
-            CreateReservedButton(app.transform, "Chat Reserved", "✉", 974f, -8f, 56f, 40f);
-            CreateReservedButton(app.transform, "Menu Reserved", "МЕНЮ", 1038f, -8f, 166f, 40f);
+            CreateReservedButton(app.transform, "Clock Reserved", "09:00", 738f, -8f, 128f, 40f);
+            CreateReservedButton(app.transform, "Chat Reserved", "✉", 874f, -8f, 56f, 40f);
+            CreateReservedButton(app.transform, "Menu Reserved", "МЕНЮ", 938f, -8f, 166f, 40f);
 
             var formulaRow = CreatePanel(app.transform, "Formula Row Surface", PrototypeVisualTheme.SheetSoft);
             SetTopLeft(formulaRow.rectTransform, 16f, -70f, WorksheetWidth, FormulaHeight);
-            CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1140f, -70f, 64f, FormulaHeight);
+            CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1040f, -70f, 64f, FormulaHeight);
 
             var worksheetSurface = CreatePanel(app.transform, "Worksheet Surface", PrototypeVisualTheme.Sheet);
             SetTopLeft(worksheetSurface.rectTransform, 16f, -112f, WorksheetWidth, WorksheetHeight);
 
             var officeZone = new GameObject("Office Scene Reserved", typeof(RectTransform));
             officeZone.transform.SetParent(chromeRoot.transform, false);
-            SetTopLeft(officeZone.GetComponent<RectTransform>(), 1250f, -64f, 330f, 800f);
+            SetTopLeft(officeZone.GetComponent<RectTransform>(), 1160f, -56f, 420f, 800f);
 
             var avatar = new GameObject("Avatar Reserved", typeof(RectTransform));
             avatar.transform.SetParent(chromeRoot.transform, false);
-            SetTopLeft(avatar.GetComponent<RectTransform>(), 1254f, -568f, 322f, 286f);
+            SetTopLeft(avatar.GetComponent<RectTransform>(), 1148f, -560f, 420f, 294f);
         }
 
         private void BuildOfficeBackdrop()
@@ -164,11 +164,24 @@ namespace ExcelHell.Prototype
             var image = go.GetComponent<RawImage>();
             image.raycastTarget = false;
             image.color = Color.white;
-            image.texture = Resources.Load<Texture2D>("Art/OfficeBackground");
-            if (image.texture == null)
+
+            var texture = Resources.Load<Texture2D>("Art/OfficeBackground");
+            if (texture == null)
+            {
+                var importedSprite = Resources.LoadAll<Sprite>("Art/OfficeBackground").FirstOrDefault();
+                texture = importedSprite != null ? importedSprite.texture : null;
+            }
+
+            image.texture = texture;
+            if (texture != null)
+            {
+                texture.filterMode = FilterMode.Point;
+                Debug.Log($"[VISUAL] Office backdrop ready ({texture.width}x{texture.height}).");
+            }
+            else
             {
                 image.color = new Color(0.085f, 0.10f, 0.13f, 1f);
-                Debug.LogWarning("[VISUAL] Art/OfficeBackground not found in Resources; using dusk fallback until the PNG is imported.");
+                Debug.LogWarning("[VISUAL] Art/OfficeBackground not found in Resources; using dusk fallback.");
             }
         }
 
