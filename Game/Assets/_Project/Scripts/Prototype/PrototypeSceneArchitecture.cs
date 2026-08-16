@@ -5,24 +5,13 @@ using UnityEngine.SceneManagement;
 
 namespace ExcelHell.Prototype
 {
-    public enum PrototypeSceneRole
-    {
-        Menu = 0,
-        Gameplay = 1,
-        Constructor = 2
-    }
-
-    public static class PrototypeAuthoringMode
-    {
-        public static bool Active { get; internal set; }
-    }
-
     /// <summary>
-    /// Scene-local entry point. It keeps direct scene launches useful in the editor and
-    /// creates named runtime service objects instead of relying on one monolithic bootstrap.
+    /// Scene-local entry point. The MonoBehaviour name intentionally matches this file name:
+    /// Unity serializes scene script references through the MonoScript asset and requires a
+    /// concrete native-extension component as the file's main type.
     /// </summary>
     [DefaultExecutionOrder(-10000)]
-    public sealed class PrototypeSceneEntry : MonoBehaviour
+    public sealed class PrototypeSceneArchitecture : MonoBehaviour
     {
         [SerializeField] private PrototypeSceneRole role = PrototypeSceneRole.Gameplay;
         [SerializeField, Min(0)] private int startLevelIndex;
@@ -157,5 +146,17 @@ namespace ExcelHell.Prototype
             var item = FindFirstObjectByType<T>();
             if (item != null) Destroy(item.gameObject);
         }
+    }
+
+    public enum PrototypeSceneRole
+    {
+        Menu = 0,
+        Gameplay = 1,
+        Constructor = 2
+    }
+
+    public static class PrototypeAuthoringMode
+    {
+        public static bool Active { get; internal set; }
     }
 }
