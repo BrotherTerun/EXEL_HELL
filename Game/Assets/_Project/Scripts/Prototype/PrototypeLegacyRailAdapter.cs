@@ -1,19 +1,19 @@
 using System.Linq;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Temporary bridge while the legacy report/control block still owns production callbacks.
-    /// Scales the whole block rather than rewriting child geometry, so every existing Button keeps its hit target.
-    /// This file is expected to disappear after the visual redesign replaces the legacy sidebar skin.
+    /// Keeps the old report/control sidebar available as a developer overlay without exposing it in production UI.
+    /// F3 toggles it in Editor/Development Build; release builds keep it hidden permanently.
     /// </summary>
     [DefaultExecutionOrder(1850)]
     public sealed class PrototypeLegacyRailAdapter : MonoBehaviour
     {
         private ExcelHellPrototype prototype;
         private RectTransform sidebar;
-        private bool applied;
+        private bool visible;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -32,23 +32,50 @@ namespace ExcelHell.Prototype
             {
                 prototype = current;
                 sidebar = null;
-                applied = false;
+                visible = false;
             }
 
-            if (prototype == null || applied) return;
+            if (prototype == null) return;
             sidebar ??= prototype.GetComponentsInChildren<RectTransform>(true)
                 .FirstOrDefault(rect => rect.gameObject.name == "Sidebar");
             if (sidebar == null) return;
 
-            // Preserve the original 650x760 coordinate system used by all child controls.
+            PrepareOverlayGeometry();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (Keyboard.current != null && Keyboard.current.f3Key.wasPressedThisFrame)
+            {
+                visible = !visible;
+                ApplyVisibility();
+                Debug.Log(visible
+                    ? "[UI-DEBUG] Legacy report/control overlay shown (F3)."
+                    : "[UI-DEBUG] Legacy report/control overlay hidden (F3).");
+            }
+#else
+            visible = false;
+#endif
+            if (sidebar.gameObject.activeSelf != visible) ApplyVisibility();
+        }
+
+        private void PrepareOverlayGeometry()
+        {
             sidebar.anchorMin = sidebar.anchorMax = new Vector2(0f, 1f);
             sidebar.pivot = new Vector2(0f, 1f);
-            sidebar.anchoredPosition = new Vector2(1044f, -278f);
+            sidebar.anchoredPosition = new Vector2(830f, -84f);
             sidebar.sizeDelta = new Vector2(650f, 760f);
-            sidebar.localScale = new Vector3(0.74f, 0.68f, 1f);
+            sidebar.localScale = new Vector3(0.92f, 0.92f, 1f);
+            sidebar.SetAsLastSibling();
+        }
 
-            applied = true;
-            Debug.Log("[UI-SHELL] Legacy report/control rail fitted without rebinding gameplay callbacks.");
+        private void ApplyVisibility()
+        {
+            if (sidebar != null) sidebar.gameObject.SetActive(visible);
+        }
+
+        private void OnDisable()
+        {
+            visible = false;
+            if (sidebar != null) sidebar.gameObject.SetActive(false);
         }
     }
 }
