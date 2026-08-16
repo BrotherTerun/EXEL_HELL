@@ -10,6 +10,7 @@ namespace ExcelHell.Narrative
         ActionNumber,
         FirstRefSpawn,
         RefSpread,
+        RefDestroyed,
         CellDestroyed,
         GoalCompleted,
         AllGoalsCompleted,
