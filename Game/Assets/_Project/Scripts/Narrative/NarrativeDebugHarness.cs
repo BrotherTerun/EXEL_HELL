@@ -1,4 +1,3 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -57,8 +56,6 @@ namespace ExcelHell.Narrative
                 yield break;
             }
 
-            // Smoke data owns the runner only for the duration of this test. v1 has no authored production
-            // catalog yet, so clearing it afterwards is the correct isolated state.
             runner.ReplaceEvents(BuildSampleEvents());
             runner.ResetDiagnostics();
             Debug.Log("[NARRATIVE/TEST] BEGIN synthetic smoke test.");
@@ -87,8 +84,7 @@ namespace ExcelHell.Narrative
             else
                 Debug.LogError($"[NARRATIVE/SELF-TEST] FAIL — {summary}.");
 
-            // Remove synthetic ActionNumber/ManualDebug definitions before real gameplay begins to advance.
-            runner.ReplaceEvents(Array.Empty<NarrativeEventDefinition>());
+            runner.ReplaceEvents(System.Array.Empty<NarrativeEventDefinition>());
             Debug.Log("[NARRATIVE/TEST] Synthetic events cleared; real gameplay observation only.");
             running = false;
         }
