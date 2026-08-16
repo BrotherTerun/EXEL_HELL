@@ -10,17 +10,18 @@ namespace ExcelHell.Prototype
         public const float ReferenceWidth = 1600f;
         public const float ReferenceHeight = 900f;
 
-        private const float WindowX = 32f;
-        private const float WindowY = -28f;
-        private const float WindowWidth = 1536f;
-        private const float WindowHeight = 844f;
-        private const float WorksheetX = 54f;
+        private const float AppX = 24f;
+        private const float AppY = -20f;
+        private const float AppWidth = 1220f;
+        private const float AppHeight = 856f;
+
+        private const float WorksheetX = 40f;
         private const float WorksheetY = -132f;
-        private const float WorksheetWidth = 918f;
-        private const float WorksheetHeight = 684f;
-        private const float RailX = 1000f;
-        private const float RailY = -100f;
-        private const float RailWidth = 540f;
+        private const float WorksheetWidth = 1188f;
+        private const float WorksheetHeight = 720f;
+        private const float FormulaY = -90f;
+        private const float FormulaWidth = 1124f;
+        private const float FormulaHeight = 34f;
 
         private ExcelHellPrototype prototype;
         private Canvas canvas;
@@ -88,25 +89,25 @@ namespace ExcelHell.Prototype
             spreadsheet = FindRect(canvas.transform, "Spreadsheet");
             sidebar = FindRect(canvas.transform, "Sidebar");
             formulaBar = FindRect(canvas.transform, "Formula Bar");
-            var labels = background != null ? background.GetComponentsInChildren<Text>(true) : System.Array.Empty<Text>();
+            if (background == null || spreadsheet == null || sidebar == null || formulaBar == null) return;
+
+            var labels = background.GetComponentsInChildren<Text>(true);
             title = labels.FirstOrDefault(text => text.fontSize >= 26)?.rectTransform;
             legacyTurn = labels.FirstOrDefault(text => text != null && text.rectTransform != title && text.fontSize == 20)?.rectTransform;
-            if (background == null || spreadsheet == null || sidebar == null || formulaBar == null) return;
 
             ApplyBackground();
             BuildChrome();
             ApplyWorksheetGeometry();
-            ApplySidebarGeometry();
-            ApplyHeaderGeometry();
+            HideLegacyChrome();
             applied = true;
-            Debug.Log("[UI-SHELL] Final gameplay layout applied at 1600x900 reference resolution.");
+            Debug.Log("[UI-SHELL] Gameplay shell v2 applied: full-screen root, compact topbar, production rail hidden.");
         }
 
         private void ApplyBackground()
         {
             Stretch(background);
             var image = background.GetComponent<Image>();
-            if (image != null) image.color = new Color(0.075f, 0.082f, 0.095f, 1f);
+            if (image != null) image.color = new Color(0.055f, 0.061f, 0.071f, 1f);
         }
 
         private void BuildChrome()
@@ -114,69 +115,74 @@ namespace ExcelHell.Prototype
             chromeRoot = new GameObject("Final Game Window", typeof(RectTransform));
             chromeRoot.transform.SetParent(background, false);
             chromeRoot.transform.SetAsFirstSibling();
-            var rootRect = chromeRoot.GetComponent<RectTransform>();
-            SetTopLeft(rootRect, WindowX, WindowY, WindowWidth, WindowHeight);
-            var window = CreatePanel(chromeRoot.transform, "Window Surface", new Color(0.91f, 0.925f, 0.94f, 1f));
-            Stretch(window.rectTransform);
-            var header = CreatePanel(chromeRoot.transform, "Window Header", new Color(0.12f, 0.14f, 0.17f, 1f));
-            SetTopLeft(header.rectTransform, 0f, 0f, WindowWidth, 58f);
-            var workSurface = CreatePanel(chromeRoot.transform, "Worksheet Surface", new Color(0.965f, 0.97f, 0.975f, 1f));
-            SetTopLeft(workSurface.rectTransform, 16f, -74f, 928f, 696f);
-            var railSurface = CreatePanel(chromeRoot.transform, "Right Rail Surface", new Color(0.89f, 0.905f, 0.92f, 1f));
-            SetTopLeft(railSurface.rectTransform, 960f, -74f, 560f, 696f);
-            var avatar = CreatePanel(chromeRoot.transform, "Avatar Reserved", new Color(0.18f, 0.20f, 0.24f, 1f));
-            SetTopLeft(avatar.rectTransform, 976f, -92f, 164f, 164f);
-            AddPlaceholderLabel(avatar.transform, "PROTAGONIST", 13);
-            var clock = CreatePanel(chromeRoot.transform, "Clock Reserved", new Color(0.09f, 0.105f, 0.125f, 1f));
-            SetTopLeft(clock.rectTransform, 1156f, -92f, 348f, 72f);
-            AddPlaceholderLabel(clock.transform, "09:00  —  18:00", 22);
-            var chat = CreatePanel(chromeRoot.transform, "Chat Reserved", new Color(0.82f, 0.84f, 0.87f, 1f));
-            SetTopLeft(chat.rectTransform, 1156f, -180f, 348f, 76f);
-            AddPlaceholderLabel(chat.transform, "CHAT / NOTIFICATIONS", 14);
-            var footer = CreatePanel(chromeRoot.transform, "Footer Reserved", new Color(0.12f, 0.14f, 0.17f, 1f));
-            SetTopLeft(footer.rectTransform, 0f, -786f, WindowWidth, 58f);
-            AddPlaceholderLabel(footer.transform, "SYSTEM / STATUS", 12);
+            Stretch(chromeRoot.GetComponent<RectTransform>());
+
+            var office = CreatePanel(chromeRoot.transform, "Office Backdrop Reserved", new Color(0.075f, 0.082f, 0.095f, 1f));
+            Stretch(office.rectTransform);
+
+            var app = CreatePanel(chromeRoot.transform, "Spreadsheet App", new Color(0.90f, 0.915f, 0.93f, 1f));
+            SetTopLeft(app.rectTransform, AppX, AppY, AppWidth, AppHeight);
+
+            var topbar = CreatePanel(app.transform, "Topbar Surface", new Color(0.105f, 0.12f, 0.145f, 1f));
+            SetTopLeft(topbar.rectTransform, 0f, 0f, AppWidth, 56f);
+
+            CreateReservedButton(app.transform, "Tasks Reserved", "ЗАДАЧИ", 16f, -8f, 128f, 40f);
+            CreateReservedButton(app.transform, "Help Reserved", "?", 152f, -8f, 44f, 40f);
+            CreateReservedButton(app.transform, "Clock Reserved", "09:00", 838f, -8f, 128f, 40f);
+            CreateReservedButton(app.transform, "Chat Reserved", "✉", 974f, -8f, 56f, 40f);
+            CreateReservedButton(app.transform, "Menu Reserved", "МЕНЮ", 1038f, -8f, 166f, 40f);
+
+            var formulaRow = CreatePanel(app.transform, "Formula Row Surface", new Color(0.965f, 0.97f, 0.975f, 1f));
+            SetTopLeft(formulaRow.rectTransform, 16f, -70f, WorksheetWidth, FormulaHeight);
+            CreateReservedButton(app.transform, "Delete Reserved", "DEL", 1140f, -70f, 64f, FormulaHeight);
+
+            var worksheetSurface = CreatePanel(app.transform, "Worksheet Surface", new Color(0.975f, 0.98f, 0.985f, 1f));
+            SetTopLeft(worksheetSurface.rectTransform, 16f, -112f, WorksheetWidth, WorksheetHeight);
+
+            var officeZone = CreatePanel(chromeRoot.transform, "Office Scene Reserved", new Color(0.085f, 0.092f, 0.105f, 1f));
+            SetTopLeft(officeZone.rectTransform, 1260f, -72f, 316f, 778f);
+            AddPlaceholderLabel(officeZone.transform, "OFFICE ART", 11, new Color(0.24f, 0.27f, 0.31f, 1f));
+
+            var floor = CreatePanel(chromeRoot.transform, "Office Floor", new Color(0.13f, 0.14f, 0.15f, 1f));
+            SetTopLeft(floor.rectTransform, 1260f, -848f, 316f, 4f);
+
+            var avatar = CreatePanel(chromeRoot.transform, "Avatar Reserved", new Color(0.16f, 0.18f, 0.21f, 1f));
+            SetTopLeft(avatar.rectTransform, 1284f, -520f, 268f, 328f);
+            AddPlaceholderLabel(avatar.transform, "NORMAL\n[PROTAGONIST]", 13, new Color(0.74f, 0.78f, 0.84f, 1f));
         }
 
         private void ApplyWorksheetGeometry()
         {
             spreadsheet.SetParent(background, false);
             SetTopLeft(spreadsheet, WorksheetX, WorksheetY, WorksheetWidth, WorksheetHeight);
+            spreadsheet.SetAsLastSibling();
+
             var grid = spreadsheet.GetComponent<GridLayoutGroup>();
             if (grid != null)
             {
                 var columnCount = Mathf.Max(1, grid.constraintCount);
-                var rowCount = Mathf.Max(1, spreadsheet.childCount / columnCount);
+                var rowCount = Mathf.Max(1, Mathf.CeilToInt((float)spreadsheet.childCount / columnCount));
                 grid.cellSize = new Vector2(Mathf.Floor(WorksheetWidth / columnCount), Mathf.Floor(WorksheetHeight / rowCount));
             }
+
             formulaBar.SetParent(background, false);
-            SetTopLeft(formulaBar, WorksheetX, -94f, WorksheetWidth, 30f);
+            SetTopLeft(formulaBar, WorksheetX, FormulaY, FormulaWidth, FormulaHeight);
+            formulaBar.SetAsLastSibling();
+
+            var formulaTexts = formulaBar.GetComponentsInChildren<Text>(true);
+            var expression = formulaTexts.FirstOrDefault(text => text.text != "fx");
+            if (expression != null)
+                SetTopLeft(expression.rectTransform, 48f, 0f, FormulaWidth - 56f, FormulaHeight);
         }
 
-        private void ApplySidebarGeometry()
+        private void HideLegacyChrome()
         {
+            // The legacy sidebar remains alive as the F3 developer overlay because it owns stable callbacks.
             sidebar.SetParent(background, false);
-            SetTopLeft(sidebar, RailX, RailY - 178f, RailWidth, 516f);
-            var image = sidebar.GetComponent<Image>();
-            if (image != null) image.color = new Color(0.94f, 0.945f, 0.95f, 1f);
-        }
+            sidebar.gameObject.SetActive(false);
 
-        private void ApplyHeaderGeometry()
-        {
-            if (title != null)
-            {
-                title.SetParent(background, false);
-                SetTopLeft(title, 58f, -39f, 720f, 46f);
-                var text = title.GetComponent<Text>();
-                if (text != null) text.color = new Color(0.96f, 0.97f, 0.98f, 1f);
-            }
-            if (legacyTurn != null)
-            {
-                legacyTurn.SetParent(background, false);
-                SetTopLeft(legacyTurn, 1180f, -40f, 320f, 42f);
-                var text = legacyTurn.GetComponent<Text>();
-                if (text != null) text.color = new Color(0.82f, 0.85f, 0.89f, 1f);
-            }
+            if (title != null) title.gameObject.SetActive(false);
+            if (legacyTurn != null) legacyTurn.gameObject.SetActive(false);
         }
 
         private void DestroyChrome()
@@ -202,19 +208,26 @@ namespace ExcelHell.Prototype
             return image;
         }
 
-        private static void AddPlaceholderLabel(Transform parent, string value, int fontSize)
+        private static void CreateReservedButton(Transform parent, string name, string label, float x, float y, float width, float height)
+        {
+            var panel = CreatePanel(parent, name, new Color(0.16f, 0.18f, 0.22f, 1f));
+            SetTopLeft(panel.rectTransform, x, y, width, height);
+            AddPlaceholderLabel(panel.transform, label, label == "✉" ? 22 : 14, new Color(0.91f, 0.93f, 0.96f, 1f));
+        }
+
+        private static void AddPlaceholderLabel(Transform parent, string value, int fontSize, Color color)
         {
             var go = new GameObject("Placeholder", typeof(RectTransform), typeof(Text));
             go.transform.SetParent(parent, false);
             var rect = go.GetComponent<RectTransform>();
-            Stretch(rect, 8f);
+            Stretch(rect, 6f);
             var label = go.GetComponent<Text>();
             label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             label.text = value;
             label.fontSize = fontSize;
             label.fontStyle = FontStyle.Bold;
             label.alignment = TextAnchor.MiddleCenter;
-            label.color = new Color(0.78f, 0.81f, 0.86f, 1f);
+            label.color = color;
             label.raycastTarget = false;
         }
 
@@ -224,6 +237,7 @@ namespace ExcelHell.Prototype
             rect.pivot = new Vector2(0f, 1f);
             rect.anchoredPosition = new Vector2(x, y);
             rect.sizeDelta = new Vector2(width, height);
+            rect.localScale = Vector3.one;
         }
 
         private static void Stretch(RectTransform rect, float padding = 0f)
@@ -232,6 +246,7 @@ namespace ExcelHell.Prototype
             rect.anchorMax = Vector2.one;
             rect.offsetMin = new Vector2(padding, padding);
             rect.offsetMax = new Vector2(-padding, -padding);
+            rect.localScale = Vector3.one;
         }
     }
 }
