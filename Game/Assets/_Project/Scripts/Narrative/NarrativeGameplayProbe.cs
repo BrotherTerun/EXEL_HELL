@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using ExcelHell.Prototype;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace ExcelHell.Narrative
 {
@@ -22,12 +23,15 @@ namespace ExcelHell.Narrative
         private ExcelHellPrototype prototype;
         private CellModel[,] cells;
         private List<ReportGoal> goals;
+        private Button submitButton;
         private int lastTurn = -1;
         private bool firstRefPublished;
         private bool levelCompletedPublished;
         private readonly HashSet<string> corruptedCells = new();
         private readonly HashSet<string> destroyedCells = new();
         private readonly HashSet<string> completedGoals = new();
+
+        private void OnDestroy() => UnbindSubmitButton();
 
         private void Update()
         {
@@ -43,6 +47,7 @@ namespace ExcelHell.Narrative
 
         private void Bind(ExcelHellPrototype owner)
         {
+            UnbindSubmitButton();
             prototype = owner;
             cells = null;
             goals = null;
@@ -57,6 +62,7 @@ namespace ExcelHell.Narrative
 
             cells = CellsField?.GetValue(prototype) as CellModel[,];
             goals = GoalsField?.GetValue(prototype) as List<ReportGoal>;
+            BindSubmitButton();
 
             var levelId = PrototypeLevelRuntime.Current?.Id ?? "runtime";
             var runner = FindFirstObjectByType<NarrativeEventRunner>();
@@ -64,6 +70,27 @@ namespace ExcelHell.Narrative
 
             Debug.Log($"[NARRATIVE/PROBE] Bound to gameplay. level={levelId}");
             NarrativeSignals.Publish(new NarrativeTrigger(NarrativeTriggerType.LevelStart, subjectId: levelId));
+        }
+
+        private void BindSubmitButton()
+        {
+            if (prototype == null) return;
+            submitButton = prototype.GetComponentsInChildren<Button>(true)
+                .FirstOrDefault(button => button.gameObject.name == "ui.submit");
+            if (submitButton != null) submitButton.onClick.AddListener(OnReportSubmitted);
+        }
+
+        private void UnbindSubmitButton()
+        {
+            if (submitButton != null) submitButton.onClick.RemoveListener(OnReportSubmitted);
+            submitButton = null;
+        }
+
+        private void OnReportSubmitted()
+        {
+            NarrativeSignals.Publish(new NarrativeTrigger(
+                NarrativeTriggerType.ReportSubmitted,
+                subjectId: PrototypeLevelRuntime.Current?.Id));
         }
 
         private void ObserveTurn()
