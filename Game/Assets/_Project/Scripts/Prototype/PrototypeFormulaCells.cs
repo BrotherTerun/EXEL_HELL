@@ -8,10 +8,6 @@ using UnityEngine.UI;
 
 namespace ExcelHell.Prototype
 {
-    /// <summary>
-    /// MVP 0.5 experimental formula-field runtime.
-    /// FormulaKind belongs to CellModel (coordinate infrastructure); Occupant remains ordinary token data.
-    /// </summary>
     [DefaultExecutionOrder(1100)]
     public sealed class PrototypeFormulaCells : MonoBehaviour
     {
@@ -22,6 +18,7 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo ViewsField = typeof(ExcelHellPrototype).GetField("views", Flags);
         private static readonly FieldInfo SelectionField = typeof(ExcelHellPrototype).GetField("selection", Flags);
         private static readonly FieldInfo SchemaField = typeof(ExcelHellPrototype).GetField("schema", Flags);
+        private static readonly FieldInfo GoalsField = typeof(ExcelHellPrototype).GetField("goals", Flags);
         private static readonly FieldInfo AggregateCounterField = typeof(ExcelHellPrototype).GetField("aggregateCounter", Flags);
         private static readonly FieldInfo StatusTextField = typeof(ExcelHellPrototype).GetField("statusText", Flags);
         private static readonly FieldInfo LocalizationField = typeof(ExcelHellPrototype).GetField("loc", Flags);
@@ -36,6 +33,7 @@ namespace ExcelHell.Prototype
         private ExcelHellCellView[,] views;
         private List<CellModel> selection;
         private WorksheetSchema schema;
+        private List<ReportGoal> goals;
         private Text formulaBarText;
         private string lastExpression = string.Empty;
         private Button deleteButton;
@@ -50,8 +48,7 @@ namespace ExcelHell.Prototype
 
         public static void AssignFormula(CellModel cell, FormulaKind formula)
         {
-            if (cell == null) return;
-            cell.Formula = formula;
+            if (cell != null) cell.Formula = formula;
         }
 
         private void LateUpdate()
@@ -59,7 +56,6 @@ namespace ExcelHell.Prototype
             var current = FindFirstObjectByType<ExcelHellPrototype>();
             if (current != prototype) Bind(current);
             if (prototype == null || cells == null) return;
-
             EnsureFormulaBindings();
             RefreshFormulaPresentation();
         }
@@ -72,16 +68,17 @@ namespace ExcelHell.Prototype
             views = null;
             selection = null;
             schema = null;
+            goals = null;
             formulaBarText = null;
             deleteButton = null;
             lastExpression = string.Empty;
-
             if (prototype == null) return;
 
             cells = CellsField?.GetValue(prototype) as CellModel[,];
             views = ViewsField?.GetValue(prototype) as ExcelHellCellView[,];
             selection = SelectionField?.GetValue(prototype) as List<CellModel>;
             schema = SchemaField?.GetValue(prototype) as WorksheetSchema;
+            goals = GoalsField?.GetValue(prototype) as List<ReportGoal>;
 
             BuildFormulaBar();
             RebindDeleteProtection();
@@ -116,7 +113,6 @@ namespace ExcelHell.Prototype
             deleteButton = prototype.GetComponentsInChildren<Button>(true)
                 .FirstOrDefault(button => button.gameObject.name == "ui.delete");
             if (deleteButton == null) return;
-
             deleteButton.onClick.RemoveAllListeners();
             deleteButton.onClick.AddListener(DeleteProxy);
         }
@@ -133,22 +129,17 @@ namespace ExcelHell.Prototype
 
         private void EnsureFormulaBindings()
         {
-            if (views == null) return;
-
+            if (views == null || cells == null) return;
             foreach (var cell in cells)
             {
-                if (!cell.IsFormula) continue;
-                if (overlays.ContainsKey(cell)) continue;
-
+                if (!cell.IsFormula || overlays.ContainsKey(cell)) continue;
                 var view = views[cell.Row, cell.Column];
                 if (view == null) continue;
 
                 var overlayGo = new GameObject("Formula Activation", typeof(RectTransform), typeof(Image), typeof(FormulaCellOverlay));
                 overlayGo.transform.SetParent(view.transform, false);
-                var overlayRect = overlayGo.GetComponent<RectTransform>();
-                Stretch(overlayRect);
-                var image = overlayGo.GetComponent<Image>();
-                image.color = new Color(1f, 1f, 1f, 0.001f);
+                Stretch(overlayGo.GetComponent<RectTransform>());
+                overlayGo.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.001f);
 
                 var text = CreateText(overlayGo.transform, string.Empty, 13, FontStyle.Bold, TextAnchor.MiddleCenter);
                 Stretch(text.rectTransform, 4f);
@@ -168,45 +159,33 @@ namespace ExcelHell.Prototype
                 var cell = pair.Key;
                 var overlay = pair.Value;
                 if (overlay == null) continue;
-
                 if (cell.State != CellState.Normal)
                 {
                     overlay.SetFormulaText(string.Empty);
                     continue;
                 }
-
                 overlay.SetFormulaText(FormulaDisplay(cell));
                 overlay.SetTextColor(FormulaTextColor);
-                if (!IsReportTarget(cell))
-                    overlay.SetBackground(new Color(0.88f, 0.92f, 0.97f, 1f));
+                if (!IsReportTarget(cell)) overlay.SetBackground(new Color(0.88f, 0.92f, 0.97f, 1f));
             }
 
             if (formulaBarText == null) return;
-            if (!string.IsNullOrEmpty(lastExpression))
-            {
-                formulaBarText.text = lastExpression;
-                return;
-            }
-
-            if (selection != null && selection.Count == 1 && selection[0].IsFormula)
-                formulaBarText.text = FormulaDisplay(selection[0]);
-            else
-                formulaBarText.text = string.Empty;
+            if (!string.IsNullOrEmpty(lastExpression)) formulaBarText.text = lastExpression;
+            else if (selection != null && selection.Count == 1 && selection[0].IsFormula) formulaBarText.text = FormulaDisplay(selection[0]);
+            else formulaBarText.text = string.Empty;
         }
 
         private string FormulaDisplay(CellModel cell)
         {
             if (cell == null || !cell.IsFormula) return string.Empty;
             var function = cell.Formula == FormulaKind.Sum ? "SUM" : "SORT";
-            if (cell.Occupant == null) return $"={function}()";
-            return $"={function}({DisplayToken(cell.Occupant)})";
+            return cell.Occupant == null ? $"={function}()" : $"={function}({DisplayToken(cell.Occupant)})";
         }
 
         internal bool TryActivate(CellModel formulaCell)
         {
             if (prototype == null || formulaCell == null || !formulaCell.CanActivateFormula) return false;
             if (CanActMethod != null && !(bool)CanActMethod.Invoke(prototype, null)) return true;
-
             return formulaCell.Formula switch
             {
                 FormulaKind.Sum => TrySum(formulaCell),
@@ -236,25 +215,23 @@ namespace ExcelHell.Prototype
             }
 
             var sum = sources.Sum(cell => cell.Occupant.Number.Value);
-            var provenance = sources
-                .SelectMany(source => source.Occupant.SourceTokenIds ?? new List<string>())
-                .Distinct()
-                .ToArray();
+            var provenance = sources.SelectMany(source => source.Occupant.SourceTokenIds ?? new List<string>()).Distinct().ToArray();
             var required = sources.Any(source => source.Occupant.IsRequiredSource);
             var count = sources.Count;
 
+            // ReportCell > FormulaCell: filled report values are persistent operands.
+            // Ordinary worksheet sources remain destructively consumed by SUM.
             foreach (var source in sources)
-                source.Occupant = null;
+                if (!IsReportTarget(source)) source.Occupant = null;
 
             var counter = AggregateCounterField != null ? (int)AggregateCounterField.GetValue(prototype) : 0;
             counter++;
             AggregateCounterField?.SetValue(prototype, counter);
             target.Occupant = ContentToken.Aggregate($"aggregate.{counter}", sum, provenance, required);
 
-            lastExpression = $"=SUM({SelectionAddressExpression(sources)})";
+            lastExpression = $"=SUM({SelectionAddressExpression()})";
             selection.Clear();
-            CompleteAction(Ru($"SUM схлопнул {count} значений в {target.Address}.",
-                $"SUM collapsed {count} values into {target.Address}."));
+            CompleteAction(Ru($"SUM схлопнул {count} значений в {target.Address}.", $"SUM collapsed {count} values into {target.Address}."));
             return true;
         }
 
@@ -262,7 +239,6 @@ namespace ExcelHell.Prototype
         {
             numeric = new List<CellModel>();
             if (selection == null || selection.Count == 0 || selection.Contains(target)) return false;
-
             foreach (var cell in selection)
             {
                 if (cell.State != CellState.Normal) return false;
@@ -278,11 +254,9 @@ namespace ExcelHell.Prototype
         {
             if (!TryGetSortKey(out var keyCell, out var key))
             {
-                SetStatus(Ru("SORT: выделите ровно один ключ параметра или сотрудника.",
-                    "SORT: select exactly one field or employee key."));
+                SetStatus(Ru("SORT: выделите ровно один ключ параметра или сотрудника.", "SORT: select exactly one field or employee key."));
                 return true;
             }
-
             if (!TryBuildFormulaSortPlan(target, key, out var tokens, out var destinations))
             {
                 SetStatus("#SPILL!");
@@ -291,21 +265,16 @@ namespace ExcelHell.Prototype
 
             var movingIds = tokens.Where(token => token != null).Select(token => token.Id).ToHashSet();
             foreach (var cell in cells)
-                if (cell.Occupant != null && movingIds.Contains(cell.Occupant.Id))
-                    cell.Occupant = null;
-
+                if (cell.Occupant != null && movingIds.Contains(cell.Occupant.Id)) cell.Occupant = null;
             for (var i = 0; i < tokens.Count; i++)
-                if (tokens[i] != null)
-                    destinations[i].Occupant = tokens[i];
+                if (tokens[i] != null) destinations[i].Occupant = tokens[i];
 
             keyCell.Occupant = null;
             target.Occupant = key;
-
             lastExpression = $"=SORT({keyCell.Address})";
             var moved = tokens.Count(token => token != null);
             selection.Clear();
-            CompleteAction(Ru($"SORT переместил {moved} значений к {target.Address}.",
-                $"SORT moved {moved} values to {target.Address}."));
+            CompleteAction(Ru($"SORT переместил {moved} значений к {target.Address}.", $"SORT moved {moved} values to {target.Address}."));
             return true;
         }
 
@@ -322,8 +291,7 @@ namespace ExcelHell.Prototype
             return true;
         }
 
-        private bool TryBuildFormulaSortPlan(CellModel formulaCell, ContentToken key,
-            out List<ContentToken> tokens, out List<CellModel> destinations)
+        private bool TryBuildFormulaSortPlan(CellModel formulaCell, ContentToken key, out List<ContentToken> tokens, out List<CellModel> destinations)
         {
             tokens = new List<ContentToken>();
             destinations = new List<CellModel>();
@@ -331,55 +299,40 @@ namespace ExcelHell.Prototype
 
             var data = cells.Cast<CellModel>()
                 .Where(cell => cell.State == CellState.Normal && cell.Occupant?.Kind == ContentKind.Data)
-                .Select(cell => cell.Occupant)
-                .ToList();
+                .Select(cell => cell.Occupant).ToList();
 
             int dr;
             int dc;
             if (key.Kind == ContentKind.FieldKey)
             {
-                tokens = schema.Records
-                    .Select(recordId => data.FirstOrDefault(token => token.FieldId == key.FieldId && token.RecordId == recordId))
-                    .ToList();
-                dr = 1;
-                dc = 0;
+                tokens = schema.Records.Select(recordId => data.FirstOrDefault(token => token.FieldId == key.FieldId && token.RecordId == recordId)).ToList();
+                dr = 1; dc = 0;
             }
             else
             {
-                tokens = schema.Fields
-                    .Select(fieldId => data.FirstOrDefault(token => token.RecordId == key.RecordId && token.FieldId == fieldId))
-                    .ToList();
-                dr = 0;
-                dc = 1;
+                tokens = schema.Fields.Select(fieldId => data.FirstOrDefault(token => token.RecordId == key.RecordId && token.FieldId == fieldId)).ToList();
+                dr = 0; dc = 1;
             }
 
             if (tokens.All(token => token == null)) return false;
             var movingIds = tokens.Where(token => token != null).Select(token => token.Id).ToHashSet();
-
             for (var i = 1; i <= tokens.Count; i++)
             {
                 var row = formulaCell.Row + dr * i;
                 var column = formulaCell.Column + dc * i;
                 if (row < 0 || row >= cells.GetLength(0) || column < 0 || column >= cells.GetLength(1)) return false;
-
                 var destination = cells[row, column];
                 if (destination.State != CellState.Normal || destination.IsFormula) return false;
                 if (destination.Occupant != null && !movingIds.Contains(destination.Occupant.Id)) return false;
                 destinations.Add(destination);
             }
-
             return true;
         }
 
-        private bool IsReportTarget(CellModel cell)
-        {
-            if (cell == null) return false;
-            var goalsField = typeof(ExcelHellPrototype).GetField("goals", Flags);
-            var goals = goalsField?.GetValue(prototype) as List<ReportGoal>;
-            return goals != null && goals.Any(goal => goal.TargetRow == cell.Row && goal.TargetColumn == cell.Column);
-        }
+        private bool IsReportTarget(CellModel cell) =>
+            cell != null && goals != null && goals.Any(goal => goal.TargetRow == cell.Row && goal.TargetColumn == cell.Column);
 
-        private string SelectionAddressExpression(IReadOnlyList<CellModel> sources)
+        private string SelectionAddressExpression()
         {
             if (selection == null || selection.Count == 0) return string.Empty;
             var minRow = selection.Min(cell => cell.Row);
@@ -396,8 +349,8 @@ namespace ExcelHell.Prototype
             if (token == null) return string.Empty;
             if (token.Kind == ContentKind.RecordKey || token.Kind == ContentKind.FieldKey || token.Kind == ContentKind.Label)
             {
-                var loc = LocalizationField?.GetValue(prototype) as PrototypeLocalization;
-                return loc?.Get(token.StringId) ?? token.StringId ?? token.Id;
+                var localization = LocalizationField?.GetValue(prototype) as PrototypeLocalization;
+                return localization?.Get(token.StringId) ?? token.StringId ?? token.Id;
             }
             if (token.Number.HasValue)
             {
@@ -409,8 +362,8 @@ namespace ExcelHell.Prototype
 
         private string Ru(string ru, string en)
         {
-            var loc = LocalizationField?.GetValue(prototype) as PrototypeLocalization;
-            return loc?.Language == PrototypeLanguage.English ? en : ru;
+            var localization = LocalizationField?.GetValue(prototype) as PrototypeLocalization;
+            return localization?.Language == PrototypeLanguage.English ? en : ru;
         }
 
         private void SetStatus(string value)
@@ -475,47 +428,32 @@ namespace ExcelHell.Prototype
             cellBackground = background;
         }
 
-        public void SetFormulaText(string value)
-        {
-            if (text != null) text.text = value;
-        }
-
-        public void SetTextColor(Color value)
-        {
-            if (text != null) text.color = value;
-        }
-
-        public void SetBackground(Color value)
-        {
-            if (cellBackground != null) cellBackground.color = value;
-        }
+        public void SetFormulaText(string value) { if (text != null) text.text = value; }
+        public void SetTextColor(Color value) { if (text != null) text.color = value; }
+        public void SetBackground(Color value) { if (cellBackground != null) cellBackground.color = value; }
 
         public void OnPointerDown(PointerEventData eventData)
         {
             if (eventData.button != PointerEventData.InputButton.Left) return;
-
             if (runtime != null && runtime.IsValidArgumentFor(cell))
             {
                 runtime.TryActivate(cell);
                 forwardingSelection = false;
                 return;
             }
-
             forwardingSelection = true;
             prototype.BeginSelection(cell.Row, cell.Column);
         }
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (forwardingSelection)
-                prototype.HoverSelection(cell.Row, cell.Column);
+            if (forwardingSelection) prototype.HoverSelection(cell.Row, cell.Column);
         }
 
         public void OnPointerUp(PointerEventData eventData)
         {
             if (eventData.button != PointerEventData.InputButton.Left) return;
-            if (forwardingSelection)
-                prototype.EndSelection();
+            if (forwardingSelection) prototype.EndSelection();
             forwardingSelection = false;
         }
     }
