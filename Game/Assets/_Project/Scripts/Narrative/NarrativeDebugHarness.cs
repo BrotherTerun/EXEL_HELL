@@ -101,13 +101,18 @@ namespace ExcelHell.Narrative
 
             var root = new GameObject("EXEL HELL NarrativeLayer v1");
             var runner = root.AddComponent<NarrativeEventRunner>();
-            var receiver = root.AddComponent<DebugNarrativeReceiver>();
             root.AddComponent<NarrativeGameplayProbe>();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            var receiver = root.AddComponent<DebugNarrativeReceiver>();
             root.AddComponent<NarrativeDebugHarness>();
             runner.RegisterReceiver(receiver);
-            Object.DontDestroyOnLoad(root);
+            Debug.Log("[NARRATIVE] Runtime bootstrap complete. Debug receiver/harness active; visual renderer not attached.");
+#else
+            Debug.Log("[NARRATIVE] Runtime bootstrap complete. Production mode; debug harness disabled.");
+#endif
 
-            Debug.Log("[NARRATIVE] Runtime bootstrap complete. Debug receiver active; renderer not attached.");
+            Object.DontDestroyOnLoad(root);
         }
     }
 }
