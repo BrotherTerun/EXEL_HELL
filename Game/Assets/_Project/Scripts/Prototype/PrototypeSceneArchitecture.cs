@@ -42,8 +42,7 @@ namespace ExcelHell.Prototype
                 return;
             }
 
-            // When Gameplay/Constructor is launched directly in Unity, the legacy application
-            // bootstrap may already exist. Disable it immediately so the scene behaves standalone.
+            // Direct scene launch in Unity should not be blocked by the application menu shell.
             if (ExcelHellApplication.ShellAvailable && !ExcelHellApplication.GameplayActive)
             {
                 var app = FindFirstObjectByType<ExcelHellApplication>();
@@ -68,19 +67,25 @@ namespace ExcelHell.Prototype
         {
             if (role == PrototypeSceneRole.Menu)
             {
-                // Gameplay helpers still have legacy auto-bootstraps for compatibility with
-                // SampleScene. Keep them out of the real menu scene.
+                DestroyIfPresent<ExcelHellPrototype>();
                 DestroyIfPresent<PrototypeLevelDatasetAdapter>();
                 DestroyIfPresent<PrototypeFormulaCells>();
                 DestroyIfPresent<PrototypeFormulaLevelCompatibility>();
                 DestroyIfPresent<PrototypeLevelFlow>();
                 DestroyIfPresent<PrototypeRefTelegraphLayer>();
                 DestroyIfPresent<PrototypeLevelConstructor>();
+                DestroyIfPresent<PrototypeAuthoringGuard>();
                 return;
             }
 
-            if (role == PrototypeSceneRole.Constructor && FindFirstObjectByType<PrototypeLevelConstructor>() == null)
+            if (role == PrototypeSceneRole.Constructor)
+            {
+                // Legacy runtime bootstraps may have spawned these before the scene entry ran.
+                DestroyIfPresent<PrototypeLevelFlow>();
+                DestroyIfPresent<PrototypeRefTelegraphLayer>();
+                CreateService<PrototypeAuthoringGuard>("[AUTHORING] Gameplay Freeze");
                 CreateService<PrototypeLevelConstructor>("[AUTHORING] Level Constructor");
+            }
         }
 
         private void Update()
@@ -98,8 +103,6 @@ namespace ExcelHell.Prototype
         {
             if (sceneTransitionRequested) return;
 
-            // Existing application shell still owns menu buttons. SceneEntry only routes the
-            // already-existing GameplayActive state into actual scene transitions.
             if (role == PrototypeSceneRole.Menu && ExcelHellApplication.ShellAvailable && ExcelHellApplication.GameplayActive)
             {
                 sceneTransitionRequested = true;
@@ -126,10 +129,17 @@ namespace ExcelHell.Prototype
             CreateService<PrototypeLevelDatasetAdapter>("[GAMEPLAY] Level Dataset");
             CreateService<PrototypeFormulaCells>("[GAMEPLAY] Formula Cells 2.0");
             CreateService<PrototypeFormulaLevelCompatibility>("[GAMEPLAY] Formula Compatibility");
-            CreateService<PrototypeRefTelegraphLayer>("[GAMEPLAY] REF Telegraph");
 
             if (role == PrototypeSceneRole.Gameplay)
+            {
+                CreateService<PrototypeRefTelegraphLayer>("[GAMEPLAY] REF Telegraph");
                 CreateService<PrototypeLevelFlow>("[GAMEPLAY] Level Flow");
+            }
+            else
+            {
+                CreateService<PrototypeAuthoringGuard>("[AUTHORING] Gameplay Freeze");
+                CreateService<PrototypeLevelConstructor>("[AUTHORING] Level Constructor");
+            }
         }
 
         private T CreateService<T>(string objectName) where T : MonoBehaviour
