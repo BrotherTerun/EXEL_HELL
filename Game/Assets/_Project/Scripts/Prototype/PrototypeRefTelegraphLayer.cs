@@ -14,9 +14,11 @@ namespace ExcelHell.Prototype
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
 
-        // Spawn = warning amber + strong border. Spread = danger red, no border.
-        private static readonly Color SpawnFillColor = new(1f, 0.68f, 0.12f, 0.28f);
-        private static readonly Color SpawnOutlineColor = new(1f, 0.88f, 0.28f, 0.95f);
+        // Spawn = warning amber + explicit border. Spread = danger red, no border.
+        // Border is built from four thin Images: Unity Outline duplicates the whole graphic
+        // and makes a translucent full-cell overlay appear almost opaque.
+        private static readonly Color SpawnFillColor = new(1f, 0.68f, 0.12f, 0.22f);
+        private static readonly Color SpawnBorderColor = new(1f, 0.88f, 0.28f, 0.95f);
         private static readonly Color SpreadFillColor = new(0.96f, 0.22f, 0.10f, 0.30f);
 
         private static readonly Color FormulaBackgroundColor = new(0.88f, 0.92f, 0.97f, 1f);
@@ -33,8 +35,8 @@ namespace ExcelHell.Prototype
 
         private sealed class TelegraphVisual
         {
-            public Image Image;
-            public Outline Outline;
+            public Image Fill;
+            public readonly List<Image> Border = new();
         }
 
         private readonly Dictionary<CellModel, TelegraphVisual> overlays = new();
@@ -71,8 +73,6 @@ namespace ExcelHell.Prototype
             if (intentValue is AnomalyIntent intent)
                 spreadTarget = cells[intent.TargetRow, intent.TargetColumn];
 
-            // Active spread may coexist with a countdown to a new outbreak. Show both.
-            // If both resolve to the same cell, spawn warning wins because it is the rarer event.
             if (spreadTarget != null && spreadTarget != spawnTarget && spreadTarget.State == CellState.Normal)
             {
                 RestoreUnderlyingBackground(spreadTarget);
@@ -89,7 +89,7 @@ namespace ExcelHell.Prototype
         private void Bind(ExcelHellPrototype owner)
         {
             foreach (var visual in overlays.Values)
-                if (visual?.Image != null) Destroy(visual.Image.gameObject);
+                if (visual?.Fill != null) Destroy(visual.Fill.gameObject);
             overlays.Clear();
 
             prototype = owner;
@@ -101,59 +101,78 @@ namespace ExcelHell.Prototype
 
         private TelegraphVisual EnsureOverlay(CellModel cell)
         {
-            if (overlays.TryGetValue(cell, out var existing) && existing?.Image != null) return existing;
+            if (overlays.TryGetValue(cell, out var existing) && existing?.Fill != null) return existing;
             var view = views[cell.Row, cell.Column];
             if (view == null) return null;
 
-            var go = new GameObject("REF Telegraph Overlay", typeof(RectTransform), typeof(Image), typeof(Outline));
-            go.transform.SetParent(view.transform, false);
-            var rect = go.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            rect.SetAsLastSibling();
+            var root = new GameObject("REF Telegraph Overlay", typeof(RectTransform), typeof(Image));
+            root.transform.SetParent(view.transform, false);
+            var rootRect = root.GetComponent<RectTransform>();
+            Stretch(rootRect);
+            rootRect.SetAsLastSibling();
 
-            var image = go.GetComponent<Image>();
-            image.raycastTarget = false;
-            image.enabled = false;
+            var fill = root.GetComponent<Image>();
+            fill.color = Color.clear;
+            fill.raycastTarget = false;
+            fill.enabled = false;
 
-            var outline = go.GetComponent<Outline>();
-            outline.useGraphicAlpha = false;
-            outline.effectColor = SpawnOutlineColor;
-            outline.effectDistance = new Vector2(3f, -3f);
-            outline.enabled = false;
+            var visual = new TelegraphVisual { Fill = fill };
+            visual.Border.Add(CreateBorder(root.transform, "Top", new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -3f), new Vector2(0f, 0f)));
+            visual.Border.Add(CreateBorder(root.transform, "Bottom", new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f), new Vector2(0f, 3f)));
+            visual.Border.Add(CreateBorder(root.transform, "Left", new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0f), new Vector2(3f, 0f)));
+            visual.Border.Add(CreateBorder(root.transform, "Right", new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(-3f, 0f), new Vector2(0f, 0f)));
 
-            var visual = new TelegraphVisual { Image = image, Outline = outline };
             overlays[cell] = visual;
             return visual;
         }
 
+        private static Image CreateBorder(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+        {
+            var go = new GameObject($"Spawn Border {name}", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = offsetMin;
+            rect.offsetMax = offsetMax;
+
+            var image = go.GetComponent<Image>();
+            image.color = SpawnBorderColor;
+            image.raycastTarget = false;
+            image.enabled = false;
+            return image;
+        }
+
         private static void SetHidden(TelegraphVisual visual)
         {
-            if (visual?.Image != null) visual.Image.enabled = false;
-            if (visual?.Outline != null) visual.Outline.enabled = false;
+            if (visual?.Fill != null) visual.Fill.enabled = false;
+            if (visual == null) return;
+            foreach (var border in visual.Border)
+                if (border != null) border.enabled = false;
         }
 
         private static void ShowSpawn(TelegraphVisual visual)
         {
-            if (visual?.Image == null) return;
-            visual.Image.color = SpawnFillColor;
-            visual.Image.enabled = true;
-            visual.Image.rectTransform.SetAsLastSibling();
-            if (visual.Outline == null) return;
-            visual.Outline.effectColor = SpawnOutlineColor;
-            visual.Outline.effectDistance = new Vector2(3f, -3f);
-            visual.Outline.enabled = true;
+            if (visual?.Fill == null) return;
+            visual.Fill.color = SpawnFillColor;
+            visual.Fill.enabled = true;
+            visual.Fill.rectTransform.SetAsLastSibling();
+            foreach (var border in visual.Border)
+            {
+                if (border == null) continue;
+                border.color = SpawnBorderColor;
+                border.enabled = true;
+            }
         }
 
         private static void ShowSpread(TelegraphVisual visual)
         {
-            if (visual?.Image == null) return;
-            visual.Image.color = SpreadFillColor;
-            visual.Image.enabled = true;
-            visual.Image.rectTransform.SetAsLastSibling();
-            if (visual.Outline != null) visual.Outline.enabled = false;
+            if (visual?.Fill == null) return;
+            visual.Fill.color = SpreadFillColor;
+            visual.Fill.enabled = true;
+            visual.Fill.rectTransform.SetAsLastSibling();
+            foreach (var border in visual.Border)
+                if (border != null) border.enabled = false;
         }
 
         private void RestoreUnderlyingBackground(CellModel cell)
@@ -192,6 +211,14 @@ namespace ExcelHell.Prototype
                 if (goal.TargetRow == cell.Row && goal.TargetColumn == cell.Column)
                     return true;
             return false;
+        }
+
+        private static void Stretch(RectTransform rect)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
         }
     }
 }
