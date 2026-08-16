@@ -1,11 +1,12 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace ExcelHell.Narrative
 {
     /// <summary>
-    /// Minimal v1 smoke harness. It installs synthetic events and lets Play Mode prove matching,
-    /// once-only behaviour, delayed dispatch and effect routing without any visual renderer.
+    /// Minimal v1 smoke harness. It installs synthetic events and verifies matching,
+    /// once-only behaviour, delayed dispatch, queue order and effect routing without visual UI.
     /// </summary>
     public sealed class NarrativeDebugHarness : MonoBehaviour
     {
@@ -13,6 +14,7 @@ namespace ExcelHell.Narrative
         [SerializeField] private bool runAutomaticSmokeTest = true;
 
         private NarrativeEventRunner runner;
+        private bool running;
 
         private void Start()
         {
@@ -20,20 +22,74 @@ namespace ExcelHell.Narrative
             if (runner == null) return;
 
             if (installSampleEvents) runner.ReplaceEvents(BuildSampleEvents());
-            if (runAutomaticSmokeTest) Invoke(nameof(RunSmokeTest), 0.25f);
+            if (runAutomaticSmokeTest) StartCoroutine(RunSmokeTestAfterStartup());
+        }
+
+        private IEnumerator RunSmokeTestAfterStartup()
+        {
+            yield return new WaitForSeconds(0.25f);
+            yield return RunSmokeTestRoutine();
         }
 
         [ContextMenu("Narrative/Run Smoke Test")]
         public void RunSmokeTest()
         {
-            if (runner == null) runner = GetComponent<NarrativeEventRunner>();
-            if (runner == null) return;
+            if (!running) StartCoroutine(RunSmokeTestRoutine());
+        }
 
-            Debug.Log("[NARRATIVE/TEST] BEGIN. Expect MATCH/EFFECT/RECEIVER logs and one SKIP for duplicate once-event.");
+        private IEnumerator RunSmokeTestRoutine()
+        {
+            if (running) yield break;
+            running = true;
+
+            if (runner == null) runner = GetComponent<NarrativeEventRunner>();
+            if (runner == null)
+            {
+                Debug.LogError("[NARRATIVE/SELF-TEST] FAIL — NarrativeEventRunner missing.");
+                running = false;
+                yield break;
+            }
+
+            if (installSampleEvents && runner.EventCount == 0)
+                runner.ReplaceEvents(BuildSampleEvents());
+
+            runner.ResetDiagnostics();
+            Debug.Log("[NARRATIVE/TEST] BEGIN synthetic smoke test.");
+
             runner.FireDebug(NarrativeTriggerType.ManualDebug, 1, "smoke.one");
             runner.FireDebug(NarrativeTriggerType.ManualDebug, 1, "smoke.duplicate");
             runner.FireDebug(NarrativeTriggerType.ActionNumber, 3, "smoke.action3");
-            Debug.Log("[NARRATIVE/TEST] END dispatch requested. Delayed effects may follow.");
+
+            var timeout = Time.realtimeSinceStartup + 2f;
+            while (!runner.IsIdle && Time.realtimeSinceStartup < timeout)
+                yield return null;
+
+            // Expected:
+            // ManualDebug first call -> 1 match, 1 ProtagonistLine
+            // ManualDebug duplicate -> 1 once-skip
+            // ActionNumber(3) -> 1 match, CellMessage + PsychosisDelta
+            var pass = runner.MatchCount == 2 &&
+                       runner.OnceSkipCount == 1 &&
+                       runner.DispatchedEffectCount == 3 &&
+                       runner.MissingReceiverCount == 0 &&
+                       runner.IsIdle;
+
+            if (pass)
+            {
+                Debug.Log(
+                    $"[NARRATIVE/SELF-TEST] PASS — matches={runner.MatchCount}, " +
+                    $"onceSkips={runner.OnceSkipCount}, effects={runner.DispatchedEffectCount}, " +
+                    $"missingReceivers={runner.MissingReceiverCount}.");
+            }
+            else
+            {
+                Debug.LogError(
+                    $"[NARRATIVE/SELF-TEST] FAIL — matches={runner.MatchCount}/2, " +
+                    $"onceSkips={runner.OnceSkipCount}/1, effects={runner.DispatchedEffectCount}/3, " +
+                    $"missingReceivers={runner.MissingReceiverCount}/0, idle={runner.IsIdle}.");
+            }
+
+            running = false;
         }
 
         private static IEnumerable<NarrativeEventDefinition> BuildSampleEvents()
