@@ -6,23 +6,16 @@ using UnityEngine.UI;
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Release-scope channel router between application settings and the runtime audio pass.
-    /// Music controls the two soundtrack beds plus the final musical stinger.
-    /// SFX controls office ambience, clock loops and every one-shot UI/gameplay cue.
+    /// Release-scope settings bridge for legacy SFX and the office clock.
+    /// The final SUNO music pass owns its own crossfade volumes and reads the same settings independently.
     /// Master volume remains global through AudioListener.volume.
     /// </summary>
     [DefaultExecutionOrder(2460)]
     public sealed class PrototypeAudioChannelRouter : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        private const float ClockBaseVolume = 0.70f;
-        private static readonly FieldInfo NormalField = typeof(PrototypeAudioDirector).GetField("normal", Flags);
-        private static readonly FieldInfo PsychosisField = typeof(PrototypeAudioDirector).GetField("psychosis", Flags);
-        private static readonly FieldInfo AmbienceField = typeof(PrototypeAudioDirector).GetField("ambience", Flags);
+        private const float ClockBaseVolume = 0.45f;
         private static readonly FieldInfo SfxField = typeof(PrototypeAudioDirector).GetField("sfx", Flags);
-        private static readonly FieldInfo StingerField = typeof(PrototypeAudioDirector).GetField("stinger", Flags);
-        private static readonly FieldInfo NormalTargetField = typeof(PrototypeAudioDirector).GetField("normalTarget", Flags);
-        private static readonly FieldInfo PsychosisTargetField = typeof(PrototypeAudioDirector).GetField("psychosisTarget", Flags);
         private static readonly FieldInfo ClockAudioField = typeof(PrototypeOfficeClock).GetField("clockAudio", Flags);
 
         private static readonly FieldInfo SettingsScreenField = typeof(ExcelHellApplication).GetField("settingsScreen", Flags);
@@ -32,11 +25,7 @@ namespace ExcelHell.Prototype
         private PrototypeAudioDirector director;
         private PrototypeOfficeClock officeClock;
         private ExcelHellApplication application;
-        private AudioSource normal;
-        private AudioSource psychosis;
-        private AudioSource ambience;
         private AudioSource sfx;
-        private AudioSource stinger;
         private AudioSource clockAudio;
 
         private float musicVolume = 0.8f;
@@ -80,17 +69,8 @@ namespace ExcelHell.Prototype
         private void Bind(PrototypeAudioDirector value)
         {
             director = value;
-            normal = psychosis = ambience = sfx = stinger = null;
-            if (director == null) return;
-
-            normal = NormalField?.GetValue(director) as AudioSource;
-            psychosis = PsychosisField?.GetValue(director) as AudioSource;
-            ambience = AmbienceField?.GetValue(director) as AudioSource;
-            sfx = SfxField?.GetValue(director) as AudioSource;
-            stinger = StingerField?.GetValue(director) as AudioSource;
+            sfx = director != null ? SfxField?.GetValue(director) as AudioSource : null;
             ApplyChannelVolumes();
-
-            Debug.Log($"[AUDIO] settings channels bound: music={musicVolume:0.00}, sfx={sfxVolume:0.00}.");
         }
 
         private void BindClock(PrototypeOfficeClock value)
@@ -121,19 +101,7 @@ namespace ExcelHell.Prototype
 
         private void ApplyChannelVolumes()
         {
-            if (director != null)
-            {
-                var normalBase = NormalTargetField?.GetValue(director) is float n ? n : 0f;
-                var psychosisBase = PsychosisTargetField?.GetValue(director) is float p ? p : 0f;
-
-                if (normal != null) normal.volume = normalBase * musicVolume;
-                if (psychosis != null) psychosis.volume = psychosisBase * musicVolume;
-                if (stinger != null) stinger.volume = 0.65f * musicVolume;
-
-                if (ambience != null) ambience.volume = 0.13f * sfxVolume;
-                if (sfx != null) sfx.volume = sfxVolume;
-            }
-
+            if (sfx != null) sfx.volume = sfxVolume;
             if (clockAudio != null) clockAudio.volume = ClockBaseVolume * sfxVolume;
         }
     }
