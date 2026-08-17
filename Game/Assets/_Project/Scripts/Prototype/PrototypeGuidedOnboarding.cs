@@ -193,28 +193,28 @@ namespace ExcelHell.Prototype
                     Highlight(ChatReserved(), Cyan, 5f);
                     break;
                 case 1:
-                    Highlight(View(FindTokenCell(token => token.Kind == ContentKind.FieldKey && token.FieldId == "salary"))?.rectTransform, Cyan, 4f);
-                    Highlight(View(FindEmptyFormula(FormulaKind.Sort))?.rectTransform, Gold, 4f);
+                    Highlight(Rect(View(FindTokenCell(token => token.Kind == ContentKind.FieldKey && token.FieldId == "salary"))), Cyan, 4f);
+                    Highlight(Rect(View(FindEmptyFormula(FormulaKind.Sort))), Gold, 4f);
                     break;
                 case 2:
-                    foreach (var cell in FieldSpan("salary")) Highlight(View(cell)?.rectTransform, Cyan, 3f);
+                    foreach (var cell in FieldSpan("salary")) Highlight(Rect(View(cell)), Cyan, 3f);
                     break;
                 case 3:
-                    Highlight(View(GoalCell("goal.salary"))?.rectTransform, Gold, 5f);
+                    Highlight(Rect(View(GoalCell("goal.salary"))), Gold, 5f);
                     break;
                 case 4:
-                    Highlight(View(FindTokenCell(token => token.Kind == ContentKind.FieldKey && token.FieldId == "bonus"))?.rectTransform, Cyan, 4f);
-                    Highlight(View(FindEmptyFormula(FormulaKind.Sort))?.rectTransform, Gold, 4f);
+                    Highlight(Rect(View(FindTokenCell(token => token.Kind == ContentKind.FieldKey && token.FieldId == "bonus"))), Cyan, 4f);
+                    Highlight(Rect(View(FindEmptyFormula(FormulaKind.Sort))), Gold, 4f);
                     break;
                 case 5:
-                    foreach (var cell in FieldSpan("bonus").Where(IsLowBonus)) Highlight(View(cell)?.rectTransform, Gold, 4f);
-                    foreach (var cell in FreeCellsOutsideFieldSpan("bonus").Take(4)) Highlight(View(cell)?.rectTransform, Cyan, 2f);
+                    foreach (var cell in FieldSpan("bonus").Where(IsLowBonus)) Highlight(Rect(View(cell)), Gold, 4f);
+                    foreach (var cell in FreeCellsOutsideFieldSpan("bonus").Take(4)) Highlight(Rect(View(cell)), Cyan, 2f);
                     break;
                 case 6:
-                    foreach (var cell in FieldSpan("bonus")) Highlight(View(cell)?.rectTransform, Cyan, 3f);
+                    foreach (var cell in FieldSpan("bonus")) Highlight(Rect(View(cell)), Cyan, 3f);
                     break;
                 case 7:
-                    Highlight(View(GoalCell("goal.bonus5"))?.rectTransform, Gold, 5f);
+                    Highlight(Rect(View(GoalCell("goal.bonus5"))), Gold, 5f);
                     break;
                 case 8:
                     Highlight(TasksReserved(), Gold, 5f);
@@ -312,6 +312,9 @@ namespace ExcelHell.Prototype
         }
 
         private ExcelHellCellView View(CellModel cell) => cell == null || views == null ? null : views[cell.Row, cell.Column];
+
+        private static RectTransform Rect(ExcelHellCellView view) =>
+            view == null ? null : view.GetComponent<RectTransform>();
 
         private void EnsureOverlayRoot()
         {
