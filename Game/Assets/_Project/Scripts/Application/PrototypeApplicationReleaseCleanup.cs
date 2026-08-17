@@ -93,13 +93,13 @@ namespace ExcelHell.Application
 
         private void SyncHelpBody()
         {
-            var language = ExcelHellApplication.CurrentLanguageCode ?? "ru";
-            if (string.Equals(language, lastLanguage, StringComparison.OrdinalIgnoreCase) &&
-                FindHelpBody() is { text.Length: > 0 })
-                return;
-
             var body = FindHelpBody();
             if (body == null) return;
+
+            var language = ExcelHellApplication.CurrentLanguageCode ?? "ru";
+            if (string.Equals(language, lastLanguage, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrEmpty(body.text))
+                return;
 
             var localization = new PrototypeLocalization();
             if (string.Equals(language, "en", StringComparison.OrdinalIgnoreCase))
