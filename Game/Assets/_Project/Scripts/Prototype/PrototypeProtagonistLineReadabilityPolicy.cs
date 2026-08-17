@@ -2,6 +2,7 @@ using System.Collections;
 using System.Reflection;
 using ExcelHell.Narrative;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace ExcelHell.Prototype
 {
@@ -48,8 +49,14 @@ namespace ExcelHell.Prototype
 
             if (trackedTicket == null || Time.unscaledTime - shownAt < 0.14f) return;
 
-            if (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1) || Input.GetMouseButtonDown(2))
+            var mouse = Mouse.current;
+            if (mouse != null &&
+                (mouse.leftButton.wasPressedThisFrame ||
+                 mouse.rightButton.wasPressedThisFrame ||
+                 mouse.middleButton.wasPressedThisFrame))
+            {
                 Dismiss("global-click");
+            }
         }
 
         private void Bind(PrototypeProtagonistPresenter owner)
