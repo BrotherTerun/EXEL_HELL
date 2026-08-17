@@ -16,6 +16,8 @@ namespace ExcelHell.Prototype
         private const float DropGain = 2f / 3f;      // ~1.5x quieter
 
         private static readonly FieldInfo NormalField = typeof(PrototypeAudioDirector).GetField("normal", Flags);
+        private static readonly FieldInfo PsychosisField = typeof(PrototypeAudioDirector).GetField("psychosis", Flags);
+        private static readonly FieldInfo StingerField = typeof(PrototypeAudioDirector).GetField("stinger", Flags);
         private static readonly FieldInfo AmbienceField = typeof(PrototypeAudioDirector).GetField("ambience", Flags);
         private static readonly FieldInfo DropField = typeof(PrototypeAudioDirector).GetField("drop", Flags);
 
@@ -58,22 +60,26 @@ namespace ExcelHell.Prototype
                     DropField?.SetValue(director, tunedDrop);
             }
 
-            Debug.Log("[AUDIO/TUNE] ambience=0.087, cell_drop gain=0.67, normal music disabled.");
+            Debug.Log("[AUDIO/TUNE] ambience=0.087, cell_drop gain=0.67, all music disabled.");
         }
 
         private void ApplyMix()
         {
-            var normal = NormalField?.GetValue(director) as AudioSource;
-            if (normal != null)
-            {
-                normal.volume = 0f;
-                normal.mute = true;
-                if (normal.isPlaying) normal.Stop();
-            }
+            MuteMusicSource(NormalField?.GetValue(director) as AudioSource);
+            MuteMusicSource(PsychosisField?.GetValue(director) as AudioSource);
+            MuteMusicSource(StingerField?.GetValue(director) as AudioSource);
 
             var ambience = AmbienceField?.GetValue(director) as AudioSource;
             if (ambience != null)
                 ambience.volume = AmbienceVolume;
+        }
+
+        private static void MuteMusicSource(AudioSource source)
+        {
+            if (source == null) return;
+            source.volume = 0f;
+            source.mute = true;
+            if (source.isPlaying) source.Stop();
         }
 
         private static AudioClip CreateScaledCopy(AudioClip source, float gain)
