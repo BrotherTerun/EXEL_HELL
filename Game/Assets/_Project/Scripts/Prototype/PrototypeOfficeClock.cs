@@ -8,7 +8,7 @@ namespace ExcelHell.Prototype
     public sealed class PrototypeOfficeClock : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        private const float ClockBaseVolume = 0.70f;
+        private const float ClockBaseVolume = 0.45f;
         private static readonly FieldInfo TurnField = typeof(ExcelHellPrototype).GetField("turn", Flags);
 
         private ExcelHellPrototype prototype;
