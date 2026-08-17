@@ -406,13 +406,8 @@ namespace ExcelHell.Prototype
             if (!failureButtonBound)
             {
                 failureButtonBound = true;
-                button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(RestartCurrentLevel);
                 failureTitleBase = title.rectTransform.anchoredPosition;
-                if (modal.GetComponent<RectTransform>() is { } modalRect)
-                    modalRect.sizeDelta = new Vector2(modalRect.sizeDelta.x, 280f);
-                body.rectTransform.sizeDelta = new Vector2(body.rectTransform.sizeDelta.x, 92f);
-                button.GetComponent<RectTransform>().anchoredPosition = new Vector2(190f, -214f);
             }
 
             var day = Mathf.Clamp(PrototypeLevelRuntime.CurrentIndex + 1, 1, 4);
@@ -440,6 +435,9 @@ namespace ExcelHell.Prototype
 
         private void RestartCurrentLevel()
         {
+            if (hud != null && HudCompletionButtonField?.GetValue(hud) is Button button)
+                button.onClick.RemoveListener(RestartCurrentLevel);
+
             failureActive = false;
             failureButtonBound = false;
             RestoreMutedPresentation();
