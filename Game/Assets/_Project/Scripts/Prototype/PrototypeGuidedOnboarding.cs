@@ -43,6 +43,7 @@ namespace ExcelHell.Prototype
         private int announcedStep = -1;
         private float boundAt;
         private bool completed;
+        private bool chatOpenedForStepZero;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -92,6 +93,7 @@ namespace ExcelHell.Prototype
             step = 0;
             announcedStep = -1;
             completed = false;
+            chatOpenedForStepZero = false;
             boundAt = Time.unscaledTime;
 
             if (prototype == null || PrototypeLevelRuntime.CurrentIndex != 0) return;
@@ -109,8 +111,14 @@ namespace ExcelHell.Prototype
             switch (step)
             {
                 case 0:
-                    if (ChatIsOpen()) step = 1;
+                {
+                    var chatOpen = ChatIsOpen();
+                    if (chatOpen)
+                        chatOpenedForStepZero = true;
+                    else if (chatOpenedForStepZero)
+                        step = 1;
                     break;
+                }
                 case 1:
                     if (FieldIsAssembled("salary")) step = 2;
                     break;
@@ -145,7 +153,6 @@ namespace ExcelHell.Prototype
         private void AnnounceCurrentStep()
         {
             if (announcedStep == step || protagonist == null) return;
-            // Let the authored LevelStart line land first. Step 0 itself is primarily the visible chat highlight.
             if (step == 0 && Time.unscaledTime - boundAt < 1.65f) return;
 
             var text = StepText(step);
@@ -160,7 +167,7 @@ namespace ExcelHell.Prototype
                 lifetime = new NarrativeLifetime
                 {
                     dismissMode = NarrativeDismissMode.TimedOrClick,
-                    duration = step == 0 ? 5.5f : 6.5f
+                    duration = 22f
                 }
             };
             protagonist.Receive(new NarrativeEffectTicket(new NarrativeEffectRequest($"guided.l1.{step}", effect)));
@@ -190,7 +197,7 @@ namespace ExcelHell.Prototype
             switch (step)
             {
                 case 0:
-                    Highlight(ChatReserved(), Cyan, 5f);
+                    if (!ChatIsOpen()) Highlight(ChatReserved(), Cyan, 5f);
                     break;
                 case 1:
                     Highlight(Rect(View(FindTokenCell(token => token.Kind == ContentKind.FieldKey && token.FieldId == "salary"))), Cyan, 4f);
