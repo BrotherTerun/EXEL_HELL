@@ -1,11 +1,12 @@
 using System.Reflection;
 using ExcelHell.Application;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace ExcelHell.Prototype
 {
     /// <summary>
-    /// Release-scope channel router between persisted application settings and the runtime audio pass.
+    /// Release-scope channel router between application settings and the runtime audio pass.
     /// Music controls the two soundtrack beds plus the final musical stinger.
     /// SFX controls office ambience and every one-shot UI/gameplay cue.
     /// Master volume remains global through AudioListener.volume.
@@ -22,7 +23,12 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo NormalTargetField = typeof(PrototypeAudioDirector).GetField("normalTarget", Flags);
         private static readonly FieldInfo PsychosisTargetField = typeof(PrototypeAudioDirector).GetField("psychosisTarget", Flags);
 
+        private static readonly FieldInfo SettingsScreenField = typeof(ExcelHellApplication).GetField("settingsScreen", Flags);
+        private static readonly FieldInfo MusicSliderField = typeof(ExcelHellApplication).GetField("musicSlider", Flags);
+        private static readonly FieldInfo SfxSliderField = typeof(ExcelHellApplication).GetField("sfxSlider", Flags);
+
         private PrototypeAudioDirector director;
+        private ExcelHellApplication application;
         private AudioSource normal;
         private AudioSource psychosis;
         private AudioSource ambience;
@@ -58,6 +64,9 @@ namespace ExcelHell.Prototype
         {
             var current = PrototypeAudioDirector.Instance;
             if (current != director) Bind(current);
+
+            application ??= FindFirstObjectByType<ExcelHellApplication>(FindObjectsInactive.Include);
+            ReadLiveSettingsSliders();
             ApplyChannelVolumes();
         }
 
@@ -75,6 +84,18 @@ namespace ExcelHell.Prototype
             ApplyChannelVolumes();
 
             Debug.Log($"[AUDIO] settings channels bound: music={musicVolume:0.00}, sfx={sfxVolume:0.00}.");
+        }
+
+        private void ReadLiveSettingsSliders()
+        {
+            if (application == null) return;
+            var settingsScreen = SettingsScreenField?.GetValue(application) as GameObject;
+            if (settingsScreen == null || !settingsScreen.activeInHierarchy) return;
+
+            var musicSlider = MusicSliderField?.GetValue(application) as Slider;
+            var sfxSlider = SfxSliderField?.GetValue(application) as Slider;
+            if (musicSlider != null) musicVolume = Mathf.Clamp01(musicSlider.value);
+            if (sfxSlider != null) sfxVolume = Mathf.Clamp01(sfxSlider.value);
         }
 
         private void OnAudioVolumesChanged(float music, float effects)
