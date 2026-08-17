@@ -8,13 +8,14 @@ namespace ExcelHell.Prototype
     /// <summary>
     /// Release-scope channel router between application settings and the runtime audio pass.
     /// Music controls the two soundtrack beds plus the final musical stinger.
-    /// SFX controls office ambience and every one-shot UI/gameplay cue.
+    /// SFX controls office ambience, clock loops and every one-shot UI/gameplay cue.
     /// Master volume remains global through AudioListener.volume.
     /// </summary>
     [DefaultExecutionOrder(2460)]
     public sealed class PrototypeAudioChannelRouter : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        private const float ClockBaseVolume = 0.70f;
         private static readonly FieldInfo NormalField = typeof(PrototypeAudioDirector).GetField("normal", Flags);
         private static readonly FieldInfo PsychosisField = typeof(PrototypeAudioDirector).GetField("psychosis", Flags);
         private static readonly FieldInfo AmbienceField = typeof(PrototypeAudioDirector).GetField("ambience", Flags);
@@ -22,18 +23,21 @@ namespace ExcelHell.Prototype
         private static readonly FieldInfo StingerField = typeof(PrototypeAudioDirector).GetField("stinger", Flags);
         private static readonly FieldInfo NormalTargetField = typeof(PrototypeAudioDirector).GetField("normalTarget", Flags);
         private static readonly FieldInfo PsychosisTargetField = typeof(PrototypeAudioDirector).GetField("psychosisTarget", Flags);
+        private static readonly FieldInfo ClockAudioField = typeof(PrototypeOfficeClock).GetField("clockAudio", Flags);
 
         private static readonly FieldInfo SettingsScreenField = typeof(ExcelHellApplication).GetField("settingsScreen", Flags);
         private static readonly FieldInfo MusicSliderField = typeof(ExcelHellApplication).GetField("musicSlider", Flags);
         private static readonly FieldInfo SfxSliderField = typeof(ExcelHellApplication).GetField("sfxSlider", Flags);
 
         private PrototypeAudioDirector director;
+        private PrototypeOfficeClock officeClock;
         private ExcelHellApplication application;
         private AudioSource normal;
         private AudioSource psychosis;
         private AudioSource ambience;
         private AudioSource sfx;
         private AudioSource stinger;
+        private AudioSource clockAudio;
 
         private float musicVolume = 0.8f;
         private float sfxVolume = 0.9f;
@@ -65,6 +69,9 @@ namespace ExcelHell.Prototype
             var current = PrototypeAudioDirector.Instance;
             if (current != director) Bind(current);
 
+            var currentClock = FindFirstObjectByType<PrototypeOfficeClock>(FindObjectsInactive.Include);
+            if (currentClock != officeClock) BindClock(currentClock);
+
             application ??= FindFirstObjectByType<ExcelHellApplication>(FindObjectsInactive.Include);
             ReadLiveSettingsSliders();
             ApplyChannelVolumes();
@@ -84,6 +91,13 @@ namespace ExcelHell.Prototype
             ApplyChannelVolumes();
 
             Debug.Log($"[AUDIO] settings channels bound: music={musicVolume:0.00}, sfx={sfxVolume:0.00}.");
+        }
+
+        private void BindClock(PrototypeOfficeClock value)
+        {
+            officeClock = value;
+            clockAudio = officeClock != null ? ClockAudioField?.GetValue(officeClock) as AudioSource : null;
+            ApplyChannelVolumes();
         }
 
         private void ReadLiveSettingsSliders()
@@ -107,17 +121,20 @@ namespace ExcelHell.Prototype
 
         private void ApplyChannelVolumes()
         {
-            if (director == null) return;
+            if (director != null)
+            {
+                var normalBase = NormalTargetField?.GetValue(director) is float n ? n : 0f;
+                var psychosisBase = PsychosisTargetField?.GetValue(director) is float p ? p : 0f;
 
-            var normalBase = NormalTargetField?.GetValue(director) is float n ? n : 0f;
-            var psychosisBase = PsychosisTargetField?.GetValue(director) is float p ? p : 0f;
+                if (normal != null) normal.volume = normalBase * musicVolume;
+                if (psychosis != null) psychosis.volume = psychosisBase * musicVolume;
+                if (stinger != null) stinger.volume = 0.65f * musicVolume;
 
-            if (normal != null) normal.volume = normalBase * musicVolume;
-            if (psychosis != null) psychosis.volume = psychosisBase * musicVolume;
-            if (stinger != null) stinger.volume = 0.65f * musicVolume;
+                if (ambience != null) ambience.volume = 0.13f * sfxVolume;
+                if (sfx != null) sfx.volume = sfxVolume;
+            }
 
-            if (ambience != null) ambience.volume = 0.13f * sfxVolume;
-            if (sfx != null) sfx.volume = sfxVolume;
+            if (clockAudio != null) clockAudio.volume = ClockBaseVolume * sfxVolume;
         }
     }
 }
