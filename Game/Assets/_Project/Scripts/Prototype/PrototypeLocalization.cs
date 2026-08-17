@@ -58,7 +58,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "ОТЧЁТ ОТКЛОНЁН: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "В Config не выбрано ни одной задачи отчёта.",
-                ["ui.help"] = "Drag = MOVE. Shift+Drag = выделение прямоугольного диапазона. DELETE пока остаётся кнопкой.\nПеретащите ключ в =SORT(); перетащите выделенный числовой диапазон в =SUM(). Формула с содержимым закреплена: первый MOVE выносит token, следующий может перенести пустую формулу.\nMOVE проверяет только конечные клетки: можно двигать по диагонали и поверх занятых клеток. Пустую формулу можно перенести в пустую report-cell.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
+                ["ui.help"] = "Drag = MOVE. Shift+Drag = выделение прямоугольного диапазона. DELETE остаётся кнопкой.\nПеретащите ключ в =SORT(); выделите минимум две числовые клетки и перетащите диапазон в =SUM(). Обычные пустые клетки SUM игнорирует; #REF!, Destroyed, ключи и подписи делают диапазон недопустимым.\nЧтобы считать прямо в ячейку отчёта, сначала перенесите пустую =SUM() в нужную report-cell, затем перетащите на неё диапазон. Уже заполненные report-cells можно использовать в SUM как операнды: их значения читаются, но не исчезают.\nПустые =SUM() и =SORT() можно переносить. Если формула уже содержит результат или ключ, сначала вынесите содержимое, затем переносите саму формулу. MOVE проверяет только конечные клетки: можно двигать по диагонали и поверх занятых клеток.\nОранжевый = Intent, красный = #REF!, чёрный = Destroyed; синяя рамка = выделение.",
 
                 ["record.ivanov"] = "Иванов",
                 ["record.petrov"] = "Петров",
@@ -123,7 +123,7 @@ namespace ExcelHell.Prototype
                 ["ui.rejected"] = "REPORT REJECTED: {0}",
                 ["ui.goal"] = "{0}: {1} / {2} → {3}",
                 ["ui.noGoals"] = "No report goals selected in Config.",
-                ["ui.help"] = "Drag = MOVE. Shift+Drag = rectangular range selection. DELETE remains a button for now.\nDrop a key into =SORT(); drop a selected numeric range into =SUM(). An occupied formula is anchored: the first MOVE extracts its token, then the empty formula can be moved.\nMOVE checks destination cells only: diagonal moves and crossing occupied cells are allowed. An empty formula may be moved onto an empty report cell.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
+                ["ui.help"] = "Drag = MOVE. Shift+Drag = rectangular range selection. DELETE remains a button.\nDrop a key into =SORT(); select at least two numeric cells and drop the range into =SUM(). SUM ignores normal blanks; #REF!, Destroyed cells, keys, and labels make the range invalid.\nTo calculate directly into a report cell, first move an empty =SUM() onto the target report cell, then drop the selected range onto it. Filled report cells may be used as SUM operands: their values are read but remain in place.\nEmpty =SUM() and =SORT() formulas can be moved. If a formula already contains a result or key, move that content out first, then move the empty formula itself. MOVE checks destination cells only, so diagonal moves and crossing occupied cells are allowed.\nOrange = Intent, red = #REF!, black = Destroyed; blue outline = selection.",
 
                 ["record.ivanov"] = "Ivanov",
                 ["record.petrov"] = "Petrov",
