@@ -51,6 +51,7 @@ namespace ExcelHell.Prototype
         private ExcelHellApplication application;
         private CellState[,] states;
         private readonly HashSet<int> knownPsychosisRoots = new();
+        private readonly Dictionary<int, GameObject> pendingPsychosisRoots = new();
         private readonly HashSet<int> knownMessageRoots = new();
 
         private AudioClip requestedTrack;
@@ -164,6 +165,7 @@ namespace ExcelHell.Prototype
             prototype = value;
             states = null;
             knownPsychosisRoots.Clear();
+            pendingPsychosisRoots.Clear();
             knownMessageRoots.Clear();
 
             var level = prototype == null ? -1 : PrototypeLevelRuntime.CurrentIndex;
@@ -225,13 +227,19 @@ namespace ExcelHell.Prototype
 
         private void ObservePsychosisManifestations()
         {
+            // Psychosis v2 creates a visual candidate first, then the pacing director may suppress it with Destroy().
+            // Destroy is deferred until the end of the frame, so sounding a root immediately also sounded suppressed
+            // candidates. Confirm it one frame later: accepted roots survive, suppressed roots compare as null.
+            ConfirmPendingPsychosisRoots();
+
             foreach (var rect in FindObjectsByType<RectTransform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
             {
                 if (rect == null || !rect.gameObject.activeInHierarchy) continue;
                 var name = rect.gameObject.name;
                 if (!IsPsychosisRoot(name)) continue;
                 var id = rect.gameObject.GetInstanceID();
-                if (knownPsychosisRoots.Add(id)) PlayPsychosisManifest();
+                if (knownPsychosisRoots.Contains(id) || pendingPsychosisRoots.ContainsKey(id)) continue;
+                pendingPsychosisRoots[id] = rect.gameObject;
             }
 
             var day = CurrentDay();
@@ -244,6 +252,21 @@ namespace ExcelHell.Prototype
                 var id = root.GetInstanceID();
                 if (knownMessageRoots.Add(id)) PlayPsychosisManifest();
             }
+        }
+
+        private void ConfirmPendingPsychosisRoots()
+        {
+            if (pendingPsychosisRoots.Count == 0) return;
+
+            foreach (var pair in pendingPsychosisRoots)
+            {
+                var root = pair.Value;
+                if (root == null || !root.activeInHierarchy) continue;
+                if (knownPsychosisRoots.Add(pair.Key))
+                    PlayPsychosisManifest();
+            }
+
+            pendingPsychosisRoots.Clear();
         }
 
         private static bool IsPsychosisRoot(string name)
