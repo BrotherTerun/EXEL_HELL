@@ -136,9 +136,13 @@ namespace ExcelHell.Application
             if (settings == null) return;
             settings.Version = 2;
             settings.LanguageCode = NormalizeLanguageCode(settings.LanguageCode);
+            settings.MasterVolume = Mathf.Clamp01(settings.MasterVolume);
+            settings.MusicVolume = Mathf.Clamp01(settings.MusicVolume);
+            settings.SfxVolume = Mathf.Clamp01(settings.SfxVolume);
             try
             {
                 SaveJson(SettingsPath, settings);
+                AppSettingsService.NotifyAudioVolumesChanged(settings);
             }
             catch (Exception exception)
             {
@@ -187,6 +191,7 @@ namespace ExcelHell.Application
     {
         public static AppSettingsData Current { get; private set; }
         public static event Action<string> LanguageChanged = delegate { };
+        public static event Action<float, float> AudioVolumesChanged = delegate { };
 
         public static void LoadAndApply()
         {
@@ -205,6 +210,7 @@ namespace ExcelHell.Application
             Current = settings;
 
             AudioListener.volume = settings.MasterVolume;
+            AudioVolumesChanged(settings.MusicVolume, settings.SfxVolume);
             QualitySettings.vSyncCount = settings.VSync ? 1 : 0;
 
             var mode = settings.Fullscreen ? FullScreenMode.FullScreenWindow : FullScreenMode.Windowed;
@@ -213,6 +219,12 @@ namespace ExcelHell.Application
 
             LanguageChanged(settings.LanguageCode);
             if (persist) AppPersistence.SaveSettings(settings);
+        }
+
+        public static void NotifyAudioVolumesChanged(AppSettingsData settings)
+        {
+            if (settings == null) return;
+            AudioVolumesChanged(Mathf.Clamp01(settings.MusicVolume), Mathf.Clamp01(settings.SfxVolume));
         }
 
         public static void ResetToDefaults()
