@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -19,6 +20,7 @@ namespace ExcelHell.Narrative
         private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
         private static readonly FieldInfo GoalsField = typeof(ExcelHellPrototype).GetField("goals", Flags);
         private static readonly FieldInfo FinishedField = typeof(ExcelHellPrototype).GetField("finished", Flags);
+        private static readonly FieldInfo StatusTextField = typeof(ExcelHellPrototype).GetField("statusText", Flags);
 
         private ExcelHellPrototype prototype;
         private CellModel[,] cells;
@@ -189,10 +191,11 @@ namespace ExcelHell.Narrative
         {
             if (levelCompletedPublished) return;
             if (FinishedField?.GetValue(prototype) is not bool finished || !finished) return;
+            if (!ReportWasAccepted()) return;
             if (goals == null || goals.Count == 0) return;
 
-            // The prototype also sets finished=true on deadline. Narrative LevelCompleted is intentionally
-            // success-only: every current ReportGoal must still be satisfied when the run finishes.
+            // Deadline and successful submit both set finished=true. LevelCompleted is strictly the latter:
+            // the report must have gone through the real submit validation and still satisfy every goal.
             foreach (var goal in goals)
             {
                 var target = cells[goal.TargetRow, goal.TargetColumn];
@@ -203,6 +206,14 @@ namespace ExcelHell.Narrative
             NarrativeSignals.Publish(new NarrativeTrigger(
                 NarrativeTriggerType.LevelCompleted,
                 subjectId: PrototypeLevelRuntime.Current?.Id));
+        }
+
+        private bool ReportWasAccepted()
+        {
+            var status = StatusTextField?.GetValue(prototype) as Text;
+            var text = status?.text ?? string.Empty;
+            return text.IndexOf("ОТЧЁТ ПРИНЯТ", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   text.IndexOf("REPORT ACCEPTED", StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 }
