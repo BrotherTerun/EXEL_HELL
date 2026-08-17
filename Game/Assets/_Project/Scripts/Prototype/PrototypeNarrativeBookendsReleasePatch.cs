@@ -12,15 +12,13 @@ namespace ExcelHell.Prototype
 {
     /// <summary>
     /// Final release bookends around the frozen gameplay field.
-    /// Keeps core state untouched while fixing four release blockers:
-    /// L1 diegetic hand-off, unread badge sorting, success/deadline separation,
-    /// and the authored L4 post-submit calm/failure presentation.
+    /// Presentation/state glue only: L1 diegetic hand-off, unread badge ordering,
+    /// deadline feedback and the authored L4 post-submit calm.
     /// </summary>
     [DefaultExecutionOrder(1185)]
     public sealed class PrototypeNarrativeBookendsReleasePatch : MonoBehaviour
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly FieldInfo CellsField = typeof(ExcelHellPrototype).GetField("cells", Flags);
         private static readonly FieldInfo ViewsField = typeof(ExcelHellPrototype).GetField("views", Flags);
         private static readonly FieldInfo FinishedField = typeof(ExcelHellPrototype).GetField("finished", Flags);
         private static readonly FieldInfo StatusTextField = typeof(ExcelHellPrototype).GetField("statusText", Flags);
@@ -56,12 +54,12 @@ namespace ExcelHell.Prototype
         private NarrativeGameplayProbe probe;
         private PrototypeGuidedOnboarding guided;
         private float boundAt;
+
         private bool l1EventsPruned;
         private bool welcomeSent;
         private bool predecessorSent;
         private bool tasksSent;
         private bool introComplete;
-        private bool guidedWasSuppressed;
         private readonly List<GameObject> introMasks = new();
 
         private bool submitReady;
@@ -77,6 +75,8 @@ namespace ExcelHell.Prototype
         private bool finalCellSent;
         private bool finalCalmApplied;
         private Coroutine finalTiredRoutine;
+        private PrototypeProtagonistPresenter mutedProtagonist;
+        private readonly List<MonoBehaviour> mutedBehaviours = new();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -104,7 +104,6 @@ namespace ExcelHell.Prototype
             probe ??= FindFirstObjectByType<NarrativeGameplayProbe>();
 
             PruneLegacyL1StartEvents();
-            SuppressFalseDeadlineVictory();
             RunL1Intro();
             KeepGuidedIntroSuppressed();
             DetectDeadlineFailure();
@@ -115,6 +114,7 @@ namespace ExcelHell.Prototype
             if (prototype == null) return;
             hud ??= FindFirstObjectByType<PrototypeProductionHud>();
 
+            KeepIntroMaskOnTop();
             FixBadgeLayer();
             RewriteFirstGuidedLine();
             DrawSubmitReadyPulse();
@@ -124,6 +124,7 @@ namespace ExcelHell.Prototype
 
         private void Bind(ExcelHellPrototype owner)
         {
+            RestoreMutedPresentation();
             ClearIntroMasks();
             DestroySubmitPulse();
             if (finalTiredRoutine != null)
@@ -138,18 +139,25 @@ namespace ExcelHell.Prototype
             probe = null;
             guided = null;
             boundAt = Time.unscaledTime;
+            ResetLocalState();
+
+            if (prototype != null && IsL1())
+                BuildIntroMasks();
+        }
+
+        private void ResetLocalState()
+        {
             l1EventsPruned = false;
-            welcomeSent = predecessorSent = tasksSent = introComplete = false;
-            guidedWasSuppressed = false;
+            welcomeSent = false;
+            predecessorSent = false;
+            tasksSent = false;
+            introComplete = false;
             submitReady = false;
             failureActive = false;
             failureButtonBound = false;
             finalSequenceActive = false;
             finalCellSent = false;
             finalCalmApplied = false;
-
-            if (prototype != null && IsL1())
-                BuildIntroMasks();
         }
 
         private bool IsL1() => PrototypeLevelRuntime.CurrentIndex == 0;
@@ -166,7 +174,7 @@ namespace ExcelHell.Prototype
                  string.Equals(definition.id, "L1_HINT_START", StringComparison.Ordinal)));
             l1EventsPruned = true;
             if (removed > 0)
-                Debug.Log($"[BOOKENDS/L1] Replaced {removed} legacy LevelStart narrative event(s) with authored intro sequence.");
+                Debug.Log($"[BOOKENDS/L1] Replaced {removed} legacy LevelStart event(s) with authored intro.");
         }
 
         private void RunL1Intro()
@@ -175,6 +183,9 @@ namespace ExcelHell.Prototype
             var elapsed = Time.unscaledTime - boundAt;
             hud ??= FindFirstObjectByType<PrototypeProductionHud>();
             if (hud == null) return;
+
+            if (!predecessorSent && introMasks.Count == 0)
+                BuildIntroMasks();
 
             if (!welcomeSent && elapsed >= 0.20f)
             {
@@ -189,7 +200,7 @@ namespace ExcelHell.Prototype
                 SendBoss("L1_INTRO_PREDECESSOR",
                     "Твой предшественник не закончил сверку. Я сейчас пришлю, на чём он остановился. Ничего сложного: приведи данные в порядок и сдай отчёт до 18:00.");
                 ClearIntroMasks();
-                Debug.Log("[BOOKENDS/L1] Worksheet data revealed with predecessor hand-off.");
+                Debug.Log("[BOOKENDS/L1] Worksheet revealed with predecessor hand-off.");
             }
 
             if (!tasksSent && elapsed >= 4.10f)
@@ -202,7 +213,7 @@ namespace ExcelHell.Prototype
             {
                 introComplete = true;
                 RestoreGuidedOnboarding(true);
-                Debug.Log("[BOOKENDS/L1] Intro complete; guided onboarding released to player.");
+                Debug.Log("[BOOKENDS/L1] Intro complete; guided onboarding released.");
             }
         }
 
@@ -210,12 +221,7 @@ namespace ExcelHell.Prototype
         {
             if (!IsL1() || introComplete) return;
             guided ??= FindFirstObjectByType<PrototypeGuidedOnboarding>();
-            if (guided == null) return;
-            if (guided.enabled)
-            {
-                guided.enabled = false;
-                guidedWasSuppressed = true;
-            }
+            if (guided != null && guided.enabled) guided.enabled = false;
         }
 
         private void RestoreGuidedOnboarding(bool announceImmediately)
@@ -229,7 +235,9 @@ namespace ExcelHell.Prototype
 
         private void BuildIntroMasks()
         {
+            if (prototype == null || predecessorSent || introMasks.Count > 0) return;
             if (ViewsField?.GetValue(prototype) is not ExcelHellCellView[,] views) return;
+
             foreach (var view in views)
             {
                 if (view == null) continue;
@@ -246,6 +254,14 @@ namespace ExcelHell.Prototype
                 mask.transform.SetAsLastSibling();
                 introMasks.Add(mask);
             }
+        }
+
+        private void KeepIntroMaskOnTop()
+        {
+            if (!IsL1() || predecessorSent) return;
+            if (introMasks.Count == 0) BuildIntroMasks();
+            foreach (var mask in introMasks)
+                if (mask != null) mask.transform.SetAsLastSibling();
         }
 
         private void ClearIntroMasks()
@@ -286,16 +302,14 @@ namespace ExcelHell.Prototype
                 bubbleText.text = text;
         }
 
-        private void SuppressFalseDeadlineVictory()
-        {
-            if (!IsFinished() || IsReportAccepted() || probe == null) return;
-            if (ProbeLevelCompletedField != null)
-                ProbeLevelCompletedField.SetValue(probe, true);
-        }
-
         private void DetectDeadlineFailure()
         {
             if (failureActive || finalSequenceActive || !IsFinished() || IsReportAccepted()) return;
+            // Redundant guard for old probe instances during hot reload; the probe itself now also requires
+            // accepted status before publishing LevelCompleted.
+            if (probe != null && ProbeLevelCompletedField != null)
+                ProbeLevelCompletedField.SetValue(probe, true);
+
             failureActive = true;
             failureStartedAt = Time.unscaledTime;
             submitReady = false;
@@ -325,7 +339,7 @@ namespace ExcelHell.Prototype
                 finalSequenceStartedAt = Time.unscaledTime;
                 submitReady = false;
                 DestroySubmitPulse();
-                Debug.Log("[BOOKENDS/FINAL] Accepted L4 report; final table beat started.");
+                Debug.Log("[BOOKENDS/FINAL] Accepted final report; table gets the last word.");
             }
         }
 
@@ -338,10 +352,8 @@ namespace ExcelHell.Prototype
 
             badge.transform.SetAsLastSibling();
             var rect = badge.GetComponent<RectTransform>();
-            if (rect != null)
-                rect.anchoredPosition = new Vector2(37f, 2f);
-            var image = badge.GetComponent<Image>();
-            if (image != null) image.raycastTarget = false;
+            if (rect != null) rect.anchoredPosition = new Vector2(37f, 2f);
+            if (badge.GetComponent<Image>() is { } image) image.raycastTarget = false;
         }
 
         private void DrawSubmitReadyPulse()
@@ -351,7 +363,6 @@ namespace ExcelHell.Prototype
                 DestroySubmitPulse();
                 return;
             }
-
             if (hud == null) return;
             var reserved = HudTasksReservedField?.GetValue(hud) as RectTransform;
             if (reserved == null) return;
@@ -375,8 +386,8 @@ namespace ExcelHell.Prototype
 
             submitPulse.transform.SetAsLastSibling();
             var pulse = 0.55f + 0.45f * Mathf.Sin(Time.unscaledTime * 5.5f);
-            var o = submitPulse.GetComponent<Outline>();
-            if (o != null) o.effectColor = new Color(Gold.r, Gold.g, Gold.b, Mathf.Lerp(0.35f, 0.95f, pulse));
+            if (submitPulse.GetComponent<Outline>() is { } o)
+                o.effectColor = new Color(Gold.r, Gold.g, Gold.b, Mathf.Lerp(0.35f, 0.95f, pulse));
         }
 
         private void DestroySubmitPulse()
@@ -398,9 +409,8 @@ namespace ExcelHell.Prototype
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(RestartCurrentLevel);
                 failureTitleBase = title.rectTransform.anchoredPosition;
-
-                var modalRect = modal.GetComponent<RectTransform>();
-                if (modalRect != null) modalRect.sizeDelta = new Vector2(modalRect.sizeDelta.x, 280f);
+                if (modal.GetComponent<RectTransform>() is { } modalRect)
+                    modalRect.sizeDelta = new Vector2(modalRect.sizeDelta.x, 280f);
                 body.rectTransform.sizeDelta = new Vector2(body.rectTransform.sizeDelta.x, 92f);
                 button.GetComponent<RectTransform>().anchoredPosition = new Vector2(190f, -214f);
             }
@@ -416,7 +426,8 @@ namespace ExcelHell.Prototype
 
             var glitchPhase = Mathf.FloorToInt(Time.unscaledTime * 11f);
             title.color = (glitchPhase & 1) == 0 ? FailureRed : FailureMagenta;
-            title.rectTransform.anchoredPosition = failureTitleBase + new Vector2((glitchPhase % 3) - 1, ((glitchPhase / 2) % 3) - 1);
+            title.rectTransform.anchoredPosition = failureTitleBase +
+                                                   new Vector2((glitchPhase % 3) - 1, ((glitchPhase / 2) % 3) - 1);
         }
 
         private static (string title, string body) FailureCopy(int day) => day switch
@@ -431,7 +442,15 @@ namespace ExcelHell.Prototype
         {
             failureActive = false;
             failureButtonBound = false;
+            RestoreMutedPresentation();
             ResetPrototypeMethod?.Invoke(prototype, null);
+            boundAt = Time.unscaledTime;
+            ResetLocalState();
+            hud = null;
+            runner = null;
+            probe = null;
+            guided = null;
+            if (IsL1()) BuildIntroMasks();
         }
 
         private void PresentFinalSequence()
@@ -440,8 +459,7 @@ namespace ExcelHell.Prototype
             if (!TryCompletionUi(out var modal, out var title, out var body, out var button, out var buttonText)) return;
 
             var elapsed = Time.unscaledTime - finalSequenceStartedAt;
-            if (!finalCalmApplied)
-                modal.SetActive(false);
+            if (!finalCalmApplied) modal.SetActive(false);
 
             if (!finalCellSent && elapsed >= 1.15f)
             {
@@ -449,14 +467,15 @@ namespace ExcelHell.Prototype
                 SendFinalCellMessage();
             }
 
-            // 1.15s before the cell appears + ~4.0s typewriter + 3.0s fully-readable hold.
+            // Boss acknowledgement arrives at +0.5s. The final cell appears at +1.15s,
+            // types for roughly four seconds, then remains fully readable for another three.
             if (!finalCalmApplied && elapsed >= 8.20f)
             {
                 finalCalmApplied = true;
                 CalmAllPresentationNoise();
                 modal.SetActive(true);
                 modal.transform.SetAsLastSibling();
-                Debug.Log("[BOOKENDS/FINAL] Table went quiet; protagonist returned to Tired state.");
+                Debug.Log("[BOOKENDS/FINAL] Interface went quiet; protagonist returned to Tired.");
             }
 
             if (!finalCalmApplied) return;
@@ -494,17 +513,19 @@ namespace ExcelHell.Prototype
 
         private void CalmAllPresentationNoise()
         {
+            mutedBehaviours.Clear();
             foreach (var behaviour in FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
             {
-                if (behaviour == null || behaviour == this) continue;
+                if (behaviour == null || behaviour == this || !behaviour.enabled) continue;
                 var typeName = behaviour.GetType().Name;
-                var noisy = typeName.Contains("Psychosis", StringComparison.Ordinal) ||
-                            typeName.Contains("Glitch", StringComparison.Ordinal) ||
+                var noisy = typeName.IndexOf("Psychosis", StringComparison.Ordinal) >= 0 ||
+                            typeName.IndexOf("Glitch", StringComparison.Ordinal) >= 0 ||
                             string.Equals(typeName, "PrototypeRefTelegraphLayer", StringComparison.Ordinal) ||
                             string.Equals(typeName, "PrototypeChatFinalPolish", StringComparison.Ordinal);
                 if (!noisy) continue;
                 behaviour.StopAllCoroutines();
                 behaviour.enabled = false;
+                mutedBehaviours.Add(behaviour);
             }
 
             foreach (var rect in FindObjectsByType<RectTransform>(FindObjectsSortMode.None))
@@ -521,15 +542,25 @@ namespace ExcelHell.Prototype
             RefreshAllMethod?.Invoke(prototype, null);
 
             var protagonist = FindFirstObjectByType<PrototypeProtagonistPresenter>();
-            if (protagonist != null)
-            {
-                protagonist.SetMood(ProtagonistMood.Tired);
-                var image = ProtagonistImageField?.GetValue(protagonist) as Image;
-                var frames = ProtagonistTiredFramesField?.GetValue(protagonist) as Sprite[];
-                protagonist.enabled = false;
-                if (image != null && frames != null && frames.Length > 0)
-                    finalTiredRoutine = StartCoroutine(AnimateFinalTired(image, frames));
-            }
+            if (protagonist == null) return;
+            protagonist.SetMood(ProtagonistMood.Tired);
+            var image = ProtagonistImageField?.GetValue(protagonist) as Image;
+            var frames = ProtagonistTiredFramesField?.GetValue(protagonist) as Sprite[];
+            protagonist.enabled = false;
+            mutedProtagonist = protagonist;
+            if (image != null && frames != null && frames.Length > 0)
+                finalTiredRoutine = StartCoroutine(AnimateFinalTired(image, frames));
+        }
+
+        private void RestoreMutedPresentation()
+        {
+            foreach (var behaviour in mutedBehaviours)
+                if (behaviour != null) behaviour.enabled = true;
+            mutedBehaviours.Clear();
+
+            if (mutedProtagonist != null)
+                mutedProtagonist.enabled = true;
+            mutedProtagonist = null;
         }
 
         private IEnumerator AnimateFinalTired(Image image, Sprite[] frames)
